@@ -1,0 +1,3 @@
+[resolver]
+# Resolve dependencies to versions that support our MSRV (rust-version in Cargo.toml).
+incompatible-rust-versions = "fallback"
