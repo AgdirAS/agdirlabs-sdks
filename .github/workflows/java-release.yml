@@ -1,0 +1,47 @@
+name: Java release
+
+# Push a tag `java/v<version>` (e.g. `java/v0.1.0`) matching java/pom.xml to publish
+# com.agdirlabs:agdir-email to Maven Central through the Sonatype Central Portal.
+# Maven Central has no OIDC trusted publishing: this needs the repository secrets
+# CENTRAL_TOKEN_USERNAME, CENTRAL_TOKEN_PASSWORD (a Central Portal user token),
+# GPG_PRIVATE_KEY (ASCII-armored) and GPG_PASSPHRASE. See java/README.md, "Releasing".
+on:
+  push:
+    tags: ['java/v*']
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+          cache: maven
+          cache-dependency-path: java/pom.xml
+          # Writes ~/.m2/settings.xml with a `central` server reading these env vars, and imports the key.
+          server-id: central
+          server-username: CENTRAL_TOKEN_USERNAME
+          server-password: CENTRAL_TOKEN_PASSWORD
+          gpg-private-key: ${{ secrets.GPG_PRIVATE_KEY }}
+          gpg-passphrase: MAVEN_GPG_PASSPHRASE
+      - name: Check the tag matches pom.xml
+        run: |
+          tag_version="${GITHUB_REF_NAME#java/v}"
+          pom_version=$(./mvnw -B -q help:evaluate -Dexpression=project.version -DforceStdout)
+          test "$tag_version" = "$pom_version" || { echo "tag $tag_version != pom.xml $pom_version"; exit 1; }
+          grep -q "VERSION = \"$pom_version\"" src/main/java/com/agdirlabs/email/AgdirEmail.java \
+            || { echo "AgdirEmail.VERSION != $pom_version"; exit 1; }
+      - name: Test, sign and publish
+        run: ./mvnw -B -P release deploy
+        env:
+          CENTRAL_TOKEN_USERNAME: ${{ secrets.CENTRAL_TOKEN_USERNAME }}
+          CENTRAL_TOKEN_PASSWORD: ${{ secrets.CENTRAL_TOKEN_PASSWORD }}
+          MAVEN_GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
