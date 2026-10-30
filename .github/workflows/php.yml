@@ -1,0 +1,42 @@
+name: PHP
+
+on:
+  push:
+    branches: [main]
+    paths: [php/**, .github/workflows/php.yml]
+  pull_request:
+    paths: [php/**, .github/workflows/php.yml]
+
+defaults:
+  run:
+    working-directory: php
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        php: ['8.1', '8.4']
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php }}
+          coverage: none
+          tools: composer:v2
+      - name: Cache Composer downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/.cache/composer
+          key: composer-${{ matrix.php }}-${{ hashFiles('php/composer.json') }}
+          restore-keys: composer-${{ matrix.php }}-
+      # A library ships no lock file: resolve the newest dependencies this PHP version allows
+      # (8.1 → Laravel 10 / Symfony 6.4 / PHPUnit 10; 8.4 → the latest majors).
+      - run: composer update --no-interaction --no-progress --prefer-dist
+      - run: composer validate --strict
+      - name: PHPStan (level 8)
+        if: matrix.php == '8.4'
+        run: vendor/bin/phpstan analyse --memory-limit=1G --no-progress
+      - name: Unit tests
+        run: vendor/bin/phpunit --testsuite unit
