@@ -1,0 +1,34 @@
+name: Ruby
+
+on:
+  push:
+    branches: [main]
+    paths: [ruby/**, .github/workflows/ruby.yml]
+  pull_request:
+    paths: [ruby/**, .github/workflows/ruby.yml]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        ruby: ["3.1", "3.4"]
+    defaults:
+      run:
+        working-directory: ruby
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby }}
+          bundler-cache: true
+          working-directory: ruby
+      - name: Tests
+        run: bundle exec rake test
+      - name: RuboCop
+        run: bundle exec rubocop
+      - name: RBS signatures
+        run: bundle exec rake rbs
+      - name: Build the gem
+        run: gem build agdirlabs-email.gemspec

@@ -1,0 +1,318 @@
+module AgdirLabs
+  module Email
+    VERSION: String
+    USER_AGENT: String
+    DEFAULT_BASE_URL: String
+
+    type address = String
+    type addresses = String | Array[String]
+    type tags = Array[{ name: String, value: String }] | Hash[String | Symbol, untyped]
+
+    class Error < StandardError
+      CODES: Hash[String, singleton(Error)]
+
+      attr_reader code: String
+      attr_reader status: Integer
+      attr_reader retry_after: Float?
+
+      def initialize: (?String? message, ?code: String, ?status: Integer, ?retry_after: Float?) -> void
+      def self.build: (String message, code: String, status: Integer, ?retry_after: Float?) -> Error
+    end
+
+    class AuthenticationError < Error
+    end
+
+    class ValidationError < Error
+    end
+
+    class NotFoundError < Error
+    end
+
+    class IdempotencyError < Error
+    end
+
+    class RateLimitError < Error
+    end
+
+    class QuotaExceededError < Error
+    end
+
+    class ServerError < Error
+    end
+
+    class ConnectionError < Error
+    end
+
+    class TimeoutError < ConnectionError
+    end
+
+    class ConfigurationError < ArgumentError
+    end
+
+    class WebhookVerificationError < StandardError
+    end
+
+    class UnsupportedMessageError < ArgumentError
+    end
+
+    class SendResult
+      attr_reader id: String
+      def initialize: (id: String) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class BatchError
+      attr_reader index: Integer
+      attr_reader message: String
+      def initialize: (index: Integer, message: String) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class BatchResult
+      attr_reader data: Array[SendResult]
+      attr_reader errors: Array[BatchError]
+      def initialize: (data: Array[SendResult], errors: Array[BatchError]) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class Result
+      attr_reader id: String
+      attr_reader deleted: bool
+      def initialize: (id: String, deleted: bool) -> void
+      def deleted?: () -> bool
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class EmailDetails
+      attr_reader id: String
+      attr_reader from: String
+      attr_reader to: Array[String]
+      attr_reader cc: Array[String]
+      attr_reader bcc: Array[String]
+      attr_reader reply_to: Array[String]
+      attr_reader subject: String
+      attr_reader html: String?
+      attr_reader text: String?
+      attr_reader created_at: Time
+      attr_reader scheduled_at: Time?
+      attr_reader status: String
+      def initialize: (**untyped) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class DnsRecord
+      attr_reader purpose: String
+      attr_reader name: String
+      attr_reader type: String
+      attr_reader value: String
+      attr_reader ttl: String
+      attr_reader priority: Integer?
+      attr_reader status: String
+      def initialize: (**untyped) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class Domain
+      attr_reader id: String
+      attr_reader name: String
+      attr_reader status: String
+      attr_reader region: String
+      attr_reader created_at: Time
+      attr_reader open_tracking: bool
+      attr_reader click_tracking: bool
+      attr_reader records: Array[DnsRecord]?
+      def initialize: (**untyped) -> void
+      def verified?: () -> bool
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class WebhookEndpoint
+      attr_reader id: String
+      attr_reader endpoint: String
+      attr_reader status: String
+      attr_reader events: Array[String]
+      attr_reader created_at: Time
+      attr_reader signing_secret: String?
+      def initialize: (**untyped) -> void
+      def enabled?: () -> bool
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class WebhookSecret
+      attr_reader id: String
+      attr_reader signing_secret: String
+      def initialize: (id: String, signing_secret: String) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class WebhookDelivery
+      attr_reader id: String
+      attr_reader type: String
+      attr_reader status: String
+      attr_reader created_at: Time
+      attr_reader next_attempt_at: Time?
+      attr_reader payload: Hash[String, untyped]?
+      def initialize: (**untyped) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class WebhookAttempt
+      attr_reader id: String
+      attr_reader http_status: Integer
+      attr_reader response: String
+      attr_reader sent_at: Time
+      def initialize: (**untyped) -> void
+      def to_h: () -> Hash[Symbol, untyped]
+    end
+
+    class Bounce
+      attr_reader type: String
+      attr_reader sub_type: String
+      attr_reader message: String
+      def initialize: (type: String, sub_type: String, message: String) -> void
+    end
+
+    class Click
+      attr_reader link: String
+      attr_reader ip_address: String
+      attr_reader user_agent: String
+      attr_reader timestamp: Time?
+      def initialize: (link: String, ip_address: String, user_agent: String, timestamp: Time?) -> void
+    end
+
+    class Failure
+      attr_reader reason: String
+      def initialize: (reason: String) -> void
+    end
+
+    class WebhookEventData
+      attr_reader email_id: String
+      attr_reader message_id: String?
+      attr_reader from: String
+      attr_reader to: Array[String]
+      attr_reader subject: String
+      attr_reader tags: Hash[String, String]
+      attr_reader created_at: Time
+      attr_reader bounce: Bounce?
+      attr_reader click: Click?
+      attr_reader failed: Failure?
+      def initialize: (**untyped) -> void
+    end
+
+    class WebhookEvent
+      attr_reader type: String
+      attr_reader created_at: Time
+      attr_reader data: WebhookEventData
+      def initialize: (type: String, created_at: Time, data: WebhookEventData) -> void
+    end
+
+    class Page[T]
+      include Enumerable[T]
+
+      attr_reader data: Array[T]
+      attr_reader has_more: bool
+      attr_reader next_cursor: String?
+
+      def initialize: (data: Array[T], has_more: bool, next_cursor: String?) -> void
+      def has_more?: () -> bool
+      def each: () { (T) -> void } -> Array[T]
+              | () -> Enumerator[T, Array[T]]
+      def size: () -> Integer
+      def length: () -> Integer
+      def empty?: () -> bool
+      def to_h: () -> { data: Array[T], has_more: bool, next_cursor: String? }
+    end
+
+    class HttpResponse
+      attr_reader status: Integer
+      attr_reader headers: Hash[String, String]
+      attr_reader body: String
+      def initialize: (status: Integer, headers: Hash[String, String], body: String) -> void
+    end
+
+    interface _HttpClient
+      def call: (method: String, url: URI::Generic, headers: Hash[String, String], body: String?, timeout: Numeric) -> HttpResponse
+    end
+
+    class NetHttpClient
+      include _HttpClient
+    end
+
+    class Client
+      attr_reader emails: Resources::Emails
+      attr_reader domains: Resources::Domains
+      attr_reader webhooks: Resources::Webhooks
+      attr_reader base_url: String
+      attr_reader max_retries: Integer
+      attr_reader timeout: Numeric
+
+      def initialize: (?api_key: String?, ?base_url: String?, ?max_retries: Integer, ?timeout: Numeric, ?http_client: _HttpClient?) -> void
+    end
+
+    module Resources
+      class Emails
+        MAX_BATCH_SIZE: Integer
+
+        def send: (from: address, to: addresses, subject: String, ?html: String?, ?text: String?, ?cc: addresses?,
+                   ?bcc: addresses?, ?reply_to: addresses?, ?headers: Hash[String | Symbol, untyped]?, ?tags: tags?,
+                   ?scheduled_at: Time | String | nil, ?idempotency_key: String?) -> SendResult
+        def send_batch: (Array[Hash[Symbol, untyped]] emails, ?validation: :strict | :permissive | String, ?idempotency_key: String?) -> BatchResult
+        def get: (String id) -> EmailDetails
+        def cancel: (String id) -> Result
+      end
+
+      class Domains
+        def create: (name: String, ?region: String?) -> Domain
+        def get: (String id) -> Domain
+        def list: (?limit: Integer?, ?after: String?) -> Page[Domain]
+        def list_all: (?limit: Integer?, ?after: String?) -> Enumerator[Domain, void]
+        def verify: (String id) -> Result
+        def delete: (String id) -> Result
+      end
+
+      class WebhookDeliveries
+        def list: (String webhook_id, ?limit: Integer?, ?after: String?) -> Page[WebhookDelivery]
+        def list_all: (String webhook_id, ?limit: Integer?, ?after: String?) -> Enumerator[WebhookDelivery, void]
+        def get: (String webhook_id, String delivery_id) -> WebhookDelivery
+        def attempts: (String webhook_id, String delivery_id, ?limit: Integer?, ?after: String?) -> Page[WebhookAttempt]
+        def replay: (String webhook_id, String delivery_id) -> Result
+      end
+
+      class Webhooks
+        EVENT_TYPES: Array[String]
+
+        attr_reader deliveries: WebhookDeliveries
+
+        def create: (endpoint: String, events: Array[String] | String) -> WebhookSecret
+        def get: (String id) -> WebhookEndpoint
+        def list: (?limit: Integer?, ?after: String?) -> Page[WebhookEndpoint]
+        def list_all: (?limit: Integer?, ?after: String?) -> Enumerator[WebhookEndpoint, void]
+        def update: (String id, ?endpoint: String?, ?events: Array[String] | String | nil, ?status: String | Symbol | nil) -> Result
+        def delete: (String id) -> Result
+        def rotate_secret: (String id) -> WebhookSecret
+      end
+    end
+
+    module Webhook
+      VerificationError: singleton(WebhookVerificationError)
+      DEFAULT_TOLERANCE: Integer
+
+      def self.verify: (payload: String, headers: untyped, secret: String, ?tolerance: Integer, ?now: Time) -> WebhookEvent
+      def self.sign: (secret: String, id: String, timestamp: String | Integer, payload: String) -> String
+    end
+
+    class DeliveryMethod
+      TAGS_HEADER: String
+      SCHEDULED_AT_HEADER: String
+      IDEMPOTENCY_KEY_HEADER: String
+      EMAIL_ID_HEADER: String
+
+      attr_accessor settings: Hash[Symbol, untyped]
+
+      def initialize: (?Hash[String | Symbol, untyped]? settings) -> void
+      def deliver!: (untyped mail) -> SendResult
+      def client: () -> Client
+      def self.to_params: (untyped mail) -> [Hash[Symbol, untyped], String?]
+    end
+  end
+end
