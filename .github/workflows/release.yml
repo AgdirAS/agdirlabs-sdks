@@ -1,11 +1,11 @@
 name: Release
 
-# npm packages: push a tag `<package dir>@<version>`, e.g. `email@0.2.0` (other languages use `<lang>/v<version>` tags and their own workflows).
+# npm packages: push a tag `<package dir>@<version>`, e.g. `email@0.2.0` or `nodemailer-transport@0.1.0` (other languages use `<lang>/v<version>` tags and their own workflows).
 # Publishes via npm Trusted Publishing (OIDC): no npm token is stored anywhere. Each package must
 # list this repo + workflow (release.yml) as its trusted publisher on npmjs.com; provenance is automatic.
 on:
   push:
-    tags: ['email@*']
+    tags: ['email@*', 'nodemailer-transport@*']
 
 permissions:
   contents: read
