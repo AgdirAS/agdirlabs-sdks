@@ -1,0 +1,33 @@
+name: Java
+
+on:
+  push:
+    branches: [main]
+    paths: [java/**, .github/workflows/java.yml]
+  pull_request:
+    paths: [java/**, .github/workflows/java.yml]
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        java: [11, 17, 21]
+    defaults:
+      run:
+        working-directory: java
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.java }}
+          cache: maven
+          cache-dependency-path: java/pom.xml
+      # Compiles with -Werror, runs the unit tests (live tests skip without AGDIR_EMAIL_LIVE_* env),
+      # and builds the sources + javadoc jars so Javadoc errors fail CI rather than the release.
+      - run: ./mvnw -B verify
