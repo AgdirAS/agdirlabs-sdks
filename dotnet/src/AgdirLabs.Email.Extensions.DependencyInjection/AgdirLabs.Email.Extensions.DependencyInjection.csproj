@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <RootNamespace>AgdirLabs.Email</RootNamespace>
+    <PackageId>AgdirLabs.Email.Extensions.DependencyInjection</PackageId>
+    <Title>Agdir Email — dependency injection</Title>
+    <Description>Registers the Agdir Email client with Microsoft.Extensions.DependencyInjection: services.AddAgdirEmail(), backed by IHttpClientFactory and the "AgdirEmail" configuration section.</Description>
+    <PackageTags>email;smtp;transactional-email;agdir;agdir-email;dependency-injection;aspnetcore</PackageTags>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\AgdirLabs.Email\AgdirLabs.Email.csproj" />
+    <PackageReference Include="Microsoft.Extensions.Http" Version="8.0.1" />
+    <PackageReference Include="Microsoft.Extensions.Configuration.Binder" Version="8.0.2" />
+  </ItemGroup>
+
+</Project>
