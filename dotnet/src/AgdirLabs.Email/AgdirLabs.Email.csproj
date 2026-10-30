@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFrameworks>net8.0;netstandard2.0</TargetFrameworks>
+    <RootNamespace>AgdirLabs.Email</RootNamespace>
+    <PackageId>AgdirLabs.Email</PackageId>
+    <Title>Agdir Email</Title>
+    <Description>Official .NET SDK for Agdir Email — programmatic SMTP for developers, hosted in the EU. Send transactional email, manage sending domains and webhooks, and verify signed webhook events.</Description>
+    <PackageTags>email;smtp;transactional-email;agdir;agdir-email;webhooks;api;sdk</PackageTags>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(TargetFramework)' == 'net8.0'">
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'netstandard2.0'">
+    <PackageReference Include="System.Text.Json" Version="8.0.6" />
+    <PackageReference Include="Microsoft.Bcl.AsyncInterfaces" Version="8.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="AgdirLabs.Email.Tests" />
+  </ItemGroup>
+
+</Project>

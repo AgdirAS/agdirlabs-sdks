@@ -1,0 +1,47 @@
+name: .NET release
+
+# Push a tag `dotnet/v<version>` (e.g. `dotnet/v0.1.0`) to publish AgdirLabs.Email and
+# AgdirLabs.Email.Extensions.DependencyInjection to nuget.org via NuGet Trusted Publishing (OIDC):
+# no API key is stored. One-time setup is described in dotnet/README.md ("Releasing").
+on:
+  push:
+    tags: ['dotnet/v*']
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for NuGet Trusted Publishing
+
+env:
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+defaults:
+  run:
+    working-directory: dotnet
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+      - name: Check the tag matches the package version
+        run: |
+          tag="${GITHUB_REF_NAME#dotnet/v}"
+          version=$(dotnet msbuild src/AgdirLabs.Email/AgdirLabs.Email.csproj -getProperty:Version)
+          test "$tag" = "$version" || { echo "tag $tag != Version $version"; exit 1; }
+      - run: dotnet restore
+      - run: dotnet build -c Release --no-restore
+      - run: dotnet test -c Release --no-build
+      - run: dotnet pack -c Release --no-build -o artifacts
+      - name: NuGet login (OIDC → short-lived API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ vars.NUGET_USER }}
+      - name: Publish
+        run: dotnet nuget push "artifacts/*.nupkg" --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" --source https://api.nuget.org/v3/index.json --skip-duplicate
