@@ -14,11 +14,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
+      # pnpm itself needs Node ≥ 22.13, so install and build on 22, then test on the matrix version.
       - uses: actions/setup-node@v4
         with:
-          node-version: ${{ matrix.node }}
+          node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
-      - run: pnpm test
       - run: pnpm build
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Test on Node ${{ matrix.node }}
+        working-directory: packages/email
+        run: node node_modules/vitest/vitest.mjs run
+      - name: Smoke-test the built package (ESM + CJS)
+        working-directory: packages/email
+        run: |
+          node --input-type=module -e "import { AgdirEmail } from './dist/index.js'; if (new AgdirEmail('re_x').baseUrl !== 'https://api.agdir.email') process.exit(1)"
+          node -e "const { AgdirEmail } = require('./dist/index.cjs'); if (new AgdirEmail('re_x').baseUrl !== 'https://api.agdir.email') process.exit(1)"
