@@ -17,7 +17,7 @@ Official SDKs and tools for [Agdir Email](https://agdir.email) — programmatic 
 | Java / Kotlin | `com.agdirlabs:agdir-email` (Maven Central) | [`java`](java) | in development |
 | Ruby | `agdirlabs-email` (RubyGems) | [`ruby`](ruby) | in development |
 | Rust | `agdirlabs-email` (crates.io) | [`rust`](rust) | in development |
-| CLI | `agdir-email` (Homebrew, winget, Scoop, npm) | [`cli`](cli) | in development |
+| CLI | `agdir-email` (Homebrew, Scoop, winget, deb/rpm, `go install`) | [`cli`](cli) | in development |
 
 All SDKs implement the same API, described by the [OpenAPI spec](openapi/agdir-email.yaml), and share the same conventions: a client preconfigured for `https://api.agdir.email`, the `AGDIR_EMAIL_API_KEY` / `AGDIR_EMAIL_BASE_URL` environment variables, typed errors with the API's error codes, safe retries with idempotency keys, cursor pagination, and webhook signature verification.
 
