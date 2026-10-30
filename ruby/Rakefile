@@ -1,0 +1,25 @@
+# frozen_string_literal: true
+
+require "bundler/gem_tasks"
+require "rake/testtask"
+require "rubocop/rake_task"
+
+Rake::TestTask.new(:test) do |t|
+  t.libs << "test"
+  t.test_files = FileList["test/**/*_test.rb"]
+  t.warning = false
+end
+
+RuboCop::RakeTask.new
+
+desc "Validate the RBS signatures"
+task :rbs do
+  sh "rbs -r uri -I sig validate"
+end
+
+# This gem lives in a monorepo and is released from `ruby/v*` tags pushed by a maintainer,
+# so `rake release` must not create or push a `v*` tag of its own.
+Rake::Task["release:source_control_push"].clear
+task "release:source_control_push"
+
+task default: %i[test rubocop rbs]

@@ -1,0 +1,35 @@
+name: Ruby release
+
+# Push a tag `ruby/v<version>` (e.g. `ruby/v0.1.0`) to publish the `agdirlabs-email` gem.
+# Publishes via RubyGems Trusted Publishing (OIDC): no RubyGems API key is stored anywhere.
+# rubygems.org must list this repo + workflow (ruby-release.yml) as the gem's trusted publisher (see ruby/README.md).
+on:
+  push:
+    tags: ['ruby/v*']
+
+permissions:
+  contents: write # release-gem configures git credentials; the Rakefile disables its tag push
+  id-token: write # OIDC token for RubyGems Trusted Publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ruby
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: "3.4"
+          bundler-cache: true
+          working-directory: ruby
+      - name: Check the tag matches the gem version
+        run: |
+          version="${GITHUB_REF_NAME#ruby/v}"
+          actual=$(ruby -r ./lib/agdirlabs/email/version -e 'print AgdirLabs::Email::VERSION')
+          test "$actual" = "$version" || { echo "tag $version != VERSION $actual"; exit 1; }
+      - run: bundle exec rake test
+      - uses: rubygems/release-gem@v1
+        with:
+          working-directory: ruby
