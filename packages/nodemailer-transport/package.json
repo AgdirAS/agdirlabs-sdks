@@ -1,0 +1,72 @@
+{
+  "name": "@agdirlabs/nodemailer-transport",
+  "version": "0.1.0",
+  "description": "Nodemailer transport for Agdir Email — send with Nodemailer through the Agdir Email API.",
+  "license": "MIT",
+  "author": "Agdir AS",
+  "homepage": "https://agdir.email",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgdirAS/agdirlabs-sdks.git",
+    "directory": "packages/nodemailer-transport"
+  },
+  "keywords": [
+    "email",
+    "smtp",
+    "transactional-email",
+    "email-api",
+    "nodemailer",
+    "nodemailer-transport",
+    "agdir"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --target es2022",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "dependencies": {
+    "@agdirlabs/email": "^0.1.1"
+  },
+  "peerDependencies": {
+    "nodemailer": ">=6"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/nodemailer": "^8.0.2",
+    "nodemailer": "^10.3.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/AgdirAS/agdirlabs-sdks/issues"
+  }
+}

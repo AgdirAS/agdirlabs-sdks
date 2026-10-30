@@ -27,11 +27,19 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node }}
-      - name: Test on Node ${{ matrix.node }}
+      - name: Test @agdirlabs/email on Node ${{ matrix.node }}
         working-directory: packages/email
         run: node node_modules/vitest/vitest.mjs run
-      - name: Smoke-test the built package (ESM + CJS)
+      - name: Smoke-test the built @agdirlabs/email (ESM + CJS)
         working-directory: packages/email
         run: |
           node --input-type=module -e "import { AgdirEmail } from './dist/index.js'; if (new AgdirEmail('re_x').baseUrl !== 'https://api.agdir.email') process.exit(1)"
           node -e "const { AgdirEmail } = require('./dist/index.cjs'); if (new AgdirEmail('re_x').baseUrl !== 'https://api.agdir.email') process.exit(1)"
+      - name: Test @agdirlabs/nodemailer-transport on Node ${{ matrix.node }}
+        working-directory: packages/nodemailer-transport
+        run: node node_modules/vitest/vitest.mjs run
+      - name: Smoke-test the built @agdirlabs/nodemailer-transport (ESM + CJS)
+        working-directory: packages/nodemailer-transport
+        run: |
+          node --input-type=module -e "import nodemailer from 'nodemailer'; import { agdirTransport } from './dist/index.js'; const t = nodemailer.createTransport(agdirTransport({ apiKey: 're_x' })); if (t.transporter.name !== 'AgdirEmail') process.exit(1)"
+          node -e "const nodemailer = require('nodemailer'); const { agdirTransport } = require('./dist/index.cjs'); const t = nodemailer.createTransport(agdirTransport({ apiKey: 're_x' })); if (t.transporter.name !== 'AgdirEmail') process.exit(1)"
