@@ -17,10 +17,10 @@ Thanks for helping improve Agdir's public packages! This repo is maintained by [
 | `php` | Packagist | PHP ≥ 8.1 + Composer |
 | `go` | Go module | Go ≥ 1.22 |
 | `dotnet` | NuGet | .NET 8+ |
-| `java` | Maven Central | JDK 17 + Maven |
+| `java` | Maven Central | JDK 11+ (Maven Wrapper included) |
 | `ruby` | RubyGems | Ruby ≥ 3.1 |
 | `rust` | crates.io | stable Rust |
-| `cli` | `agdir-email` binary | Go |
+| `cli` | `agdir-email` binary (Homebrew, Scoop, winget) | Go |
 | `openapi` | API description shared by all SDKs | — |
 
 Each folder has its own README, CHANGELOG, tests and `.github/workflows/<lang>.yml`. If you don't have a toolchain installed, every folder documents a `docker run` command that runs its tests in the official image.
