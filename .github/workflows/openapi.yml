@@ -1,0 +1,19 @@
+name: OpenAPI
+
+on:
+  push:
+    branches: [main]
+    paths: [openapi/**, .github/workflows/openapi.yml]
+  pull_request:
+    paths: [openapi/**, .github/workflows/openapi.yml]
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Lint with Redocly
+        run: npx --yes @redocly/cli@2.72.1 lint openapi/agdir-email.yaml --config openapi/redocly.yaml
