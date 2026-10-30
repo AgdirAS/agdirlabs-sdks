@@ -1,0 +1,167 @@
+# yaml-language-server: $schema=https://goreleaser.com/static/schema.json
+#
+# Release configuration of the agdir-email CLI. GoReleaser runs in this folder (cli/) and builds
+# against the SDK in ../go through go.work. See README.md → Releasing; the release workflow is
+# .github/workflows/cli-release.yml. Dry run:
+#   docker run --rm -v "$PWD/..":/src -w /src/cli goreleaser/goreleaser release --snapshot --clean
+version: 2
+project_name: agdir-email
+
+before:
+  hooks:
+    - go mod download
+    - ./scripts/completions.sh
+
+builds:
+  - id: agdir-email
+    main: ./cmd/agdir-email
+    binary: agdir-email
+    env:
+      - CGO_ENABLED=0
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/AgdirAS/agdirlabs-sdks/cli/internal/app.Version={{ .Version }}
+      - -X github.com/AgdirAS/agdirlabs-sdks/cli/internal/app.Commit={{ .ShortCommit }}
+      - -X github.com/AgdirAS/agdirlabs-sdks/cli/internal/app.Date={{ .CommitDate }}
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  - id: default
+    ids: [agdir-email]
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip] # winget and Scoop install from zip archives
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - README.md
+      - LICENSE
+      - CHANGELOG.md
+      - completions/*
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-snapshot"
+
+changelog:
+  disable: true
+
+# The GitHub release is created by the workflow under the monorepo tag cli/vX.Y.Z (GoReleaser OSS
+# only understands plain vX.Y.Z tags), so the download URLs below point at that tag.
+release:
+  disable: true
+
+nfpms:
+  - id: packages
+    package_name: agdir-email
+    ids: [agdir-email]
+    file_name_template: "{{ .ConventionalFileName }}"
+    vendor: Agdir AS
+    homepage: https://agdir.email
+    maintainer: Agdir AS <support@agdir.email>
+    description: Command-line interface for Agdir Email, the EU-hosted transactional email API.
+    license: MIT
+    section: mail
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    contents:
+      - src: completions/agdir-email.bash
+        dst: /usr/share/bash-completion/completions/agdir-email
+      - src: completions/agdir-email.zsh
+        dst: /usr/share/zsh/vendor-completions/_agdir-email
+      - src: completions/agdir-email.fish
+        dst: /usr/share/fish/vendor_completions.d/agdir-email.fish
+      - src: LICENSE
+        dst: /usr/share/doc/agdir-email/copyright
+        file_info:
+          mode: 0644
+
+# The cask, Scoop and winget manifests are generated into dist/ by `release --skip=publish` and pushed by
+# scripts/publish-manifests.sh after the GitHub release exists; the repository settings below are what a
+# plain `goreleaser release` would publish to.
+homebrew_casks:
+  - name: agdir-email
+    ids: [default]
+    repository:
+      owner: AgdirAS
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://agdir.email
+    description: Command-line interface for Agdir Email, the EU-hosted transactional email API
+    license: MIT
+    url:
+      template: "https://github.com/AgdirAS/agdirlabs-sdks/releases/download/cli/v{{ .Version }}/{{ .ArtifactName }}"
+    commit_author:
+      name: Agdir Labs
+      email: support@agdir.email
+    commit_msg_template: "agdir-email {{ .Version }}"
+    binaries: [agdir-email]
+    completions:
+      bash: completions/agdir-email.bash
+      zsh: completions/agdir-email.zsh
+      fish: completions/agdir-email.fish
+    hooks:
+      post:
+        # The binaries are not notarized yet: let macOS run them without the quarantine prompt.
+        install_steps: |
+          on_macos do
+            run "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "{{ .StagedPath }}/agdir-email"]
+          end
+
+scoops:
+  - name: agdir-email
+    ids: [default]
+    repository:
+      owner: AgdirAS
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    homepage: https://agdir.email
+    description: Command-line interface for Agdir Email, the EU-hosted transactional email API
+    license: MIT
+    url_template: "https://github.com/AgdirAS/agdirlabs-sdks/releases/download/cli/v{{ .Version }}/{{ .ArtifactName }}"
+    commit_author:
+      name: Agdir Labs
+      email: support@agdir.email
+    commit_msg_template: "agdir-email {{ .Version }}"
+
+winget:
+  - name: Agdir Email CLI
+    package_identifier: AgdirLabs.AgdirEmail
+    ids: [default]
+    publisher: Agdir AS
+    publisher_url: https://agdir.no
+    publisher_support_url: https://github.com/AgdirAS/agdirlabs-sdks/issues
+    author: Agdir Labs
+    short_description: Command-line interface for Agdir Email, the EU-hosted transactional email API
+    description: |
+      agdir-email sends email and manages Agdir Email (https://agdir.email) from the command line:
+      send and schedule email, add sending domains and check their DNS records, and manage webhooks.
+    license: MIT
+    license_url: https://github.com/AgdirAS/agdirlabs-sdks/blob/main/LICENSE
+    copyright: Copyright (c) Agdir AS
+    homepage: https://agdir.email
+    release_notes_url: "https://github.com/AgdirAS/agdirlabs-sdks/releases/tag/cli/v{{ .Version }}"
+    tags: [email, smtp, transactional-email, cli, agdir]
+    url_template: "https://github.com/AgdirAS/agdirlabs-sdks/releases/download/cli/v{{ .Version }}/{{ .ArtifactName }}"
+    commit_author:
+      name: Agdir Labs
+      email: support@agdir.email
+    commit_msg_template: "New version: AgdirLabs.AgdirEmail {{ .Version }}"
+    repository:
+      owner: AgdirAS
+      name: winget-pkgs
+      branch: "AgdirLabs.AgdirEmail-{{ .Version }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master

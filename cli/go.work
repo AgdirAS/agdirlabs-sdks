@@ -1,0 +1,8 @@
+// Development workspace: builds the CLI against the Go SDK in ../go (this repository) instead of
+// a published version. go.mod has no replace directive, so `go install …/cli/cmd/agdir-email@vX`
+// uses the released SDK tag. Ignored by `go install pkg@version`; GOWORK=off disables it locally.
+go 1.23
+
+use .
+
+replace github.com/AgdirAS/agdirlabs-sdks/go => ../go

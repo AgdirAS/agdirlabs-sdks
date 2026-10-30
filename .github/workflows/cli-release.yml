@@ -1,0 +1,61 @@
+name: CLI release
+
+# Push a tag `cli/vX.Y.Z` to release the agdir-email CLI (see cli/README.md → Releasing).
+# GoReleaser builds every target, the workflow creates the GitHub release under the monorepo tag, and only
+# then are the Homebrew cask, Scoop manifest and winget pull request published (their URLs must resolve).
+on:
+  push:
+    tags: ['cli/v*']
+
+permissions:
+  contents: write # create the GitHub release
+
+concurrency: cli-release
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: cli/go.sum
+      - name: Check the tag
+        id: v
+        run: |
+          version="${GITHUB_REF_NAME#cli/v}"
+          grep -q "Version = \"$version\"" cli/internal/app/version.go \
+            || { echo "::error::tag $version does not match Version in cli/internal/app/version.go"; exit 1; }
+          grep -q "^## \[$version\]" cli/CHANGELOG.md \
+            || { echo "::error::cli/CHANGELOG.md has no [$version] section"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          # GoReleaser OSS only understands plain vX.Y.Z tags: give it a local one (never pushed).
+          git tag "v$version"
+      - name: Test
+        working-directory: cli
+        run: go test -race -count=1 ./...
+      - name: Build (GoReleaser)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          workdir: cli
+          args: release --clean --skip=publish
+        env:
+          GORELEASER_CURRENT_TAG: v${{ steps.v.outputs.version }}
+      - name: Create the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.v.outputs.version }}
+        run: |
+          awk -v v="$VERSION" '/^## \[/ { on = index($0, "[" v "]") > 0; next } on' cli/CHANGELOG.md > notes.md
+          printf '\nInstall: `brew install agdiras/tap/agdir-email`, `scoop install agdir-email`, `winget install AgdirLabs.AgdirEmail` or `go install github.com/AgdirAS/agdirlabs-sdks/cli/cmd/agdir-email@v%s`.\n' "$VERSION" >> notes.md
+          gh release create "$GITHUB_REF_NAME" --verify-tag --title "agdir-email CLI $VERSION" --notes-file notes.md \
+            cli/dist/*.tar.gz cli/dist/*.zip cli/dist/*.deb cli/dist/*.rpm cli/dist/*.apk cli/dist/checksums.txt
+      - name: Publish Homebrew, Scoop and winget manifests
+        env:
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+        run: cli/scripts/publish-manifests.sh "${{ steps.v.outputs.version }}"

@@ -1,0 +1,73 @@
+name: CLI
+
+on:
+  push:
+    branches: [main]
+    paths: [cli/**, go/**, .github/workflows/cli.yml]
+  pull_request:
+    paths: [cli/**, go/**, .github/workflows/cli.yml]
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: ubuntu-latest, go: '1.23' }
+          - { os: ubuntu-latest, go: stable }
+          - { os: macos-latest, go: stable }
+          - { os: windows-latest, go: stable }
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        working-directory: cli
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+          cache-dependency-path: cli/go.sum
+      - name: gofmt
+        if: matrix.os == 'ubuntu-latest'
+        run: test -z "$(gofmt -l .)" || (gofmt -l . && exit 1)
+      - run: go vet ./...
+      - name: staticcheck
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
+        run: go run honnef.co/go/tools/cmd/staticcheck@2025.1.1 ./...
+      - name: Test
+        run: go test -count=1 $([ "$RUNNER_OS" = Windows ] || echo -race) ./...
+      - name: Command reference is up to date
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
+        run: |
+          go run ./internal/tools/gendocs docs
+          git diff --exit-code -- docs || (echo "::error::cli/docs is stale: run 'go run ./internal/tools/gendocs docs'" && exit 1)
+
+  goreleaser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+          cache-dependency-path: cli/go.sum
+      - name: Version
+        id: v
+        run: echo "version=$(sed -n 's/^\s*Version = "\(.*\)"/\1/p' cli/internal/app/version.go)" >> "$GITHUB_OUTPUT"
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          workdir: cli
+          args: check
+      - name: Snapshot build (all targets, packages and manifests)
+        uses: goreleaser/goreleaser-action@v6
+        with:
+          distribution: goreleaser
+          version: '~> v2'
+          workdir: cli
+          args: release --snapshot --clean
+        env:
+          GORELEASER_CURRENT_TAG: v${{ steps.v.outputs.version }}
