@@ -7,7 +7,7 @@
   "homepage": "https://agdir.email",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/AgdirAS/agdirlabs-npm.git",
+    "url": "git+https://github.com/AgdirAS/agdirlabs-sdks.git",
     "directory": "packages/email"
   },
   "keywords": [
@@ -58,6 +58,6 @@
     "vitest": "^4.0.0"
   },
   "bugs": {
-    "url": "https://github.com/AgdirAS/agdirlabs-npm/issues"
+    "url": "https://github.com/AgdirAS/agdirlabs-sdks/issues"
   }
 }

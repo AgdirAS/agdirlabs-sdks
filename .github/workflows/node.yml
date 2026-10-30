@@ -1,9 +1,11 @@
-name: CI
+name: Node.js
 
 on:
   push:
     branches: [main]
+    paths: [packages/**, pnpm-lock.yaml, .github/workflows/node.yml]
   pull_request:
+    paths: [packages/**, pnpm-lock.yaml, .github/workflows/node.yml]
 
 jobs:
   test:

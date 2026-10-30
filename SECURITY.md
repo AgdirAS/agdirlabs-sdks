@@ -4,7 +4,7 @@
 
 Please **do not** open a public issue. Instead, either:
 
-- use GitHub's [private vulnerability reporting](https://github.com/AgdirAS/agdirlabs-npm/security/advisories/new), or
+- use GitHub's [private vulnerability reporting](https://github.com/AgdirAS/agdirlabs-sdks/security/advisories/new), or
 - email **support@agdir.email** with the subject "Security".
 
 Include the affected package and version, steps to reproduce and the impact you expect. We aim to acknowledge reports within 3 working days and will keep you updated until a fix is released.

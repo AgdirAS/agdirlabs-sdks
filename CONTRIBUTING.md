@@ -8,24 +8,29 @@ Thanks for helping improve Agdir's public packages! This repo is maintained by [
 - Security issues go through [SECURITY.md](SECURITY.md), never public issues.
 - For anything bigger than a small fix, open an issue first so we can agree on the approach.
 
-## Setup
+## Layout
 
-Requires Node.js ≥ 20 and [pnpm](https://pnpm.io) (`corepack enable` picks the version from `package.json`).
+| Folder | Package | Toolchain |
+| --- | --- | --- |
+| `packages/*` | npm packages (`@agdirlabs/email`, …) | Node.js ≥ 22.13 + pnpm |
+| `python` | PyPI | Python ≥ 3.9 |
+| `php` | Packagist | PHP ≥ 8.1 + Composer |
+| `go` | Go module | Go ≥ 1.22 |
+| `dotnet` | NuGet | .NET 8+ |
+| `java` | Maven Central | JDK 17 + Maven |
+| `ruby` | RubyGems | Ruby ≥ 3.1 |
+| `rust` | crates.io | stable Rust |
+| `cli` | `agdir-email` binary | Go |
+| `openapi` | API description shared by all SDKs | — |
+
+Each folder has its own README, CHANGELOG, tests and `.github/workflows/<lang>.yml`. If you don't have a toolchain installed, every folder documents a `docker run` command that runs its tests in the official image.
+
+### Node.js
 
 ```bash
 pnpm install
-pnpm typecheck
-pnpm test
-pnpm build
+pnpm typecheck && pnpm test && pnpm build
 ```
-
-## Layout
-
-| Path | Package |
-| --- | --- |
-| `packages/email` | [`@agdirlabs/email`](packages/email) — Node.js SDK for Agdir Email |
-
-Each package has its own `README.md`, `CHANGELOG.md`, tests (`src/*.test.ts`, [Vitest](https://vitest.dev)) and build ([tsup](https://tsup.egoist.dev)).
 
 ## Pull requests
 
@@ -39,4 +44,6 @@ By contributing you agree your work is licensed under the [MIT License](LICENSE)
 
 ## Releasing (maintainers)
 
-Bump `version` in the package's `package.json`, move **Unreleased** in its `CHANGELOG.md` to the new version, commit, then push a tag `<package dir>@<version>` (e.g. `email@0.1.0`). The release workflow verifies the tag, runs the tests and publishes to npm through [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (no tokens; provenance is attached automatically). A new package must be published once by hand and then have this repo's `release.yml` added as its trusted publisher on npmjs.com.
+npm packages are tagged `<package dir>@<version>` (e.g. `email@0.2.0`); every other language is tagged `<folder>/v<version>` (e.g. `python/v0.1.0`, `go/v0.1.0` — the form Go requires for a module in a subfolder) and has its own release workflow.
+
+For npm: bump `version` in the package's `package.json`, move **Unreleased** in its `CHANGELOG.md` to the new version, commit, then push a tag `<package dir>@<version>` (e.g. `email@0.1.0`). The release workflow verifies the tag, runs the tests and publishes to npm through [Trusted Publishing](https://docs.npmjs.com/trusted-publishers) (no tokens; provenance is attached automatically). A new package must be published once by hand and then have this repo's `release.yml` added as its trusted publisher on npmjs.com.

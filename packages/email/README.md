@@ -1,7 +1,7 @@
 # @agdirlabs/email
 
 [![npm](https://img.shields.io/npm/v/@agdirlabs/email.svg)](https://www.npmjs.com/package/@agdirlabs/email)
-[![CI](https://github.com/AgdirAS/agdirlabs-npm/actions/workflows/ci.yml/badge.svg)](https://github.com/AgdirAS/agdirlabs-npm/actions/workflows/ci.yml)
+[![CI](https://github.com/AgdirAS/agdirlabs-sdks/actions/workflows/node.yml/badge.svg)](https://github.com/AgdirAS/agdirlabs-sdks/actions/workflows/node.yml)
 
 The official Node.js SDK for [Agdir Email](https://agdir.email) — programmatic SMTP for developers, hosted in the EU. Built by [Agdir Labs](https://agdirlabs.com) at [Agdir](https://agdir.no).
 
