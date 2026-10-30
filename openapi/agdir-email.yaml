@@ -1,0 +1,2150 @@
+openapi: 3.1.0
+info:
+  title: Agdir Email API
+  version: 1.0.0
+  summary: Programmatic SMTP for developers — transactional email from the EU.
+  description: |
+    The Agdir Email API sends transactional email, manages sending domains and delivers
+    email events to your webhooks. It is operated by Agdir AS (Norway) and runs in the EU
+    (AWS `eu-north-1`).
+
+    ## Authentication
+    Every request carries an API key as a bearer token: `Authorization: Bearer re_…`.
+    Create keys in the dashboard at https://app.agdir.email. A key has one of two permissions:
+
+    * `full_access` — every operation.
+    * `sending_access` — only `POST /emails` and `POST /emails/batch` (optionally limited to one
+      domain). Other operations answer `401 restricted_api_key`.
+
+    Each operation states the permission it needs in its description and in the
+    `x-required-permission` extension.
+
+    A missing or malformed `Authorization` header answers `401 missing_api_key`; an unknown key
+    answers `403 invalid_api_key`.
+
+    ## Requests and responses
+    Bodies are JSON with `snake_case` fields. Timestamps are ISO 8601 strings in UTC.
+    A body that is not valid JSON answers `400 validation_error`.
+
+    ## Errors
+    Errors have a JSON body `{"statusCode": 422, "name": "validation_error", "message": "…"}`
+    (see the `Error` schema). `name` is a stable machine-readable code; `message` is for humans.
+
+    | name | status | meaning |
+    |---|---|---|
+    | `missing_api_key` | 401 | No bearer token. |
+    | `restricted_api_key` | 401 | A `sending_access` key was used for another operation. |
+    | `invalid_api_key` | 403 | Unknown or revoked key. |
+    | `validation_error` | 400 / 403 / 422 | Invalid request (422), invalid JSON (400), or an account-state refusal such as an unverified sender domain, a paused team or the plan's domain limit (403). |
+    | `not_found` | 404 | No such resource in this team. |
+    | `invalid_idempotent_request` | 409 | Idempotency key reused with a different body. |
+    | `concurrent_idempotent_requests` | 409 | Idempotency key reused while the first request is still running. |
+    | `daily_quota_exceeded` | 429 | Daily sending cap reached. Do not retry until the next UTC day. |
+    | `monthly_quota_exceeded` | 429 | Monthly allowance or spend limit reached. Do not retry. |
+    | `rate_limit_exceeded` | 429 | Too many requests per second; retry after `retry-after` seconds. |
+    | `internal_server_error` | 500 | Unexpected error; safe to retry idempotent requests. |
+
+    ## Rate limits
+    Requests are limited per team (all keys share the budget), by default 10 requests per
+    second in a fixed 1-second window. Authenticated responses carry `ratelimit-limit`,
+    `ratelimit-remaining` and `ratelimit-reset` (seconds until the window resets). When the
+    limit is exceeded the API answers `429 rate_limit_exceeded` with a `retry-after` header.
+
+    ## Idempotency
+    `POST /emails` and `POST /emails/batch` accept an `Idempotency-Key` header (any string,
+    unique per logical send, e.g. a UUID). For 24 hours a repeated key with the same body returns
+    the original response without sending again; the same key with a different body answers
+    `409 invalid_idempotent_request`.
+
+    ## Pagination
+    List operations return `{"object": "list", "has_more": bool, "data": […]}`, newest first.
+    Pass `limit` (1–100) and, for the next page, `after` = the `id` of the last item of the
+    previous page. `before` is not supported.
+
+    ## Webhooks
+    Email events are POSTed to your endpoints as JSON (see the `emailEvent` webhook), signed
+    according to the [Standard Webhooks](https://www.standardwebhooks.com/) specification.
+  contact:
+    name: Agdir Email support
+    email: support@agdir.email
+    url: https://agdir.email
+servers:
+  - url: https://api.agdir.email
+    description: Production
+security:
+  - bearerAuth: []
+tags:
+  - name: Emails
+    description: Send single emails or batches, read their status and cancel scheduled ones.
+  - name: Domains
+    description: Sending domains — add a domain, publish its DNS records, verify it.
+  - name: Webhooks
+    description: Endpoints that receive signed email events.
+  - name: Webhook deliveries
+    description: |
+      The delivery log of a webhook: one *webhook event* per (webhook, email event), each with
+      its HTTP attempts. Failed deliveries are retried after 5 s, 5 min, 30 min, 2 h, 5 h and
+      10 h; after that the event is `failed`. Any event can be replayed manually.
+
+paths:
+  /emails:
+    post:
+      tags: [Emails]
+      operationId: sendEmail
+      summary: Send an email
+      description: |
+        Accepts one email for delivery (or for later delivery when `scheduled_at` is set) and
+        returns its id. The `from` domain must be a verified domain of your team.
+        At most 50 recipients across `to`, `cc` and `bcc`. Recipients on the team's suppression
+        list are dropped; if every recipient is suppressed the email is stored with status
+        `failed` and nothing is sent.
+
+        Permission: `full_access` or `sending_access`.
+      x-required-permission: sending_access
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendEmailRequest'
+            examples:
+              simple:
+                summary: HTML email
+                value:
+                  from: Acme <hello@acme.com>
+                  to: [user@example.org]
+                  subject: Welcome to Acme
+                  html: <p>Thanks for signing up!</p>
+              scheduled:
+                summary: Scheduled, with tags and reply-to
+                value:
+                  from: Acme <hello@acme.com>
+                  to: user@example.org
+                  subject: Your trial ends tomorrow
+                  text: Your trial ends tomorrow.
+                  reply_to: support@acme.com
+                  tags:
+                    - name: category
+                      value: trial_ending
+                  scheduled_at: '2026-11-01T09:00:00+01:00'
+      responses:
+        '200':
+          description: Email accepted.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendEmailResponse'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SendForbidden'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/SendTooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /emails/batch:
+    post:
+      tags: [Emails]
+      operationId: sendBatch
+      summary: Send a batch of emails
+      description: |
+        Accepts 1–100 emails in one request. Each item has the same shape as `POST /emails`
+        (`scheduled_at` included).
+
+        With `x-batch-validation: strict` (default) one invalid email rejects the whole batch,
+        nothing is stored, and the error message is prefixed with the item index, e.g.
+        `[1] to: Invalid email address`. With `permissive` the valid emails are accepted and
+        the invalid ones are listed in `errors`.
+
+        The batch is checked against the daily/monthly quota as a whole (all or nothing).
+
+        Permission: `full_access` or `sending_access`.
+      x-required-permission: sending_access
+      parameters:
+        - $ref: '#/components/parameters/IdempotencyKey'
+        - $ref: '#/components/parameters/BatchValidation'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SendBatchRequest'
+            example:
+              - from: Acme <hello@acme.com>
+                to: [alice@example.org]
+                subject: Your receipt
+                text: Thanks, Alice!
+              - from: Acme <hello@acme.com>
+                to: [bob@example.org]
+                subject: Your receipt
+                text: Thanks, Bob!
+      responses:
+        '200':
+          description: Batch accepted.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SendBatchResponse'
+              examples:
+                strict:
+                  summary: Strict validation
+                  value:
+                    data:
+                      - id: 4ef9a417-02e9-4d39-ad75-9611e0fcc33c
+                      - id: 2b8d4a1e-6f5c-4b1a-9c3e-7d2f0a8b9c10
+                permissive:
+                  summary: Permissive validation with one invalid email
+                  value:
+                    data:
+                      - id: 4ef9a417-02e9-4d39-ad75-9611e0fcc33c
+                    errors:
+                      - index: 1
+                        message: 'to: Invalid email address'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/SendForbidden'
+        '409':
+          $ref: '#/components/responses/IdempotencyConflict'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/SendTooManyRequests'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /emails/{email_id}:
+    get:
+      tags: [Emails]
+      operationId: getEmail
+      summary: Retrieve an email
+      description: |
+        Returns an email and its latest status (`last_event`).
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/EmailId'
+      responses:
+        '200':
+          description: The email.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Email'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /emails/{email_id}/cancel:
+    post:
+      tags: [Emails]
+      operationId: cancelEmail
+      summary: Cancel a scheduled email
+      description: |
+        Cancels an email whose status is `scheduled`; its status becomes `canceled`. Emails in
+        any other status answer `422 validation_error`.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/EmailId'
+      responses:
+        '200':
+          description: Email canceled.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/EmailRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains:
+    post:
+      tags: [Domains]
+      operationId: createDomain
+      summary: Add a domain
+      description: |
+        Adds a sending domain and returns the DNS records to publish: a DKIM `TXT` record
+        (selector `agdir`), an `MX` and an SPF `TXT` record on the `send` subdomain (custom
+        MAIL FROM) and a recommended DMARC `TXT` record. Record names are relative to the
+        registrable domain (`send` for `acme.com`, `send.mail` for `mail.acme.com`).
+        Verification starts immediately and is retried automatically for 72 hours.
+
+        A domain can belong to one team at a time. Consumer mailbox domains (gmail.com, …) are
+        refused. Adding more domains than the plan includes answers `403 validation_error`.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDomainRequest'
+            example:
+              name: acme.com
+      responses:
+        '200':
+          description: Domain created.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedDomain'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/DomainForbidden'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Domains]
+      operationId: listDomains
+      summary: List domains
+      description: |
+        Lists the team's domains, newest first. Without `limit` all domains are returned.
+        List items do not include `records`; retrieve a domain for those.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - name: limit
+          in: query
+          description: Page size (1–100). Defaults to 100.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 100
+        - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: A page of domains.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains/{domain_id}:
+    get:
+      tags: [Domains]
+      operationId: getDomain
+      summary: Retrieve a domain
+      description: |
+        Returns a domain with its DNS records and their verification status.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '200':
+          description: The domain.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Domain'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Domains]
+      operationId: deleteDomain
+      summary: Delete a domain
+      description: |
+        Deletes the domain. Its queued and scheduled emails are marked `failed`.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '200':
+          description: Domain deleted.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletedDomain'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /domains/{domain_id}/verify:
+    post:
+      tags: [Domains]
+      operationId: verifyDomain
+      summary: Verify a domain now
+      description: |
+        Checks the domain's DNS records immediately instead of waiting for the automatic
+        schedule, and restarts the 72-hour verification window of a `failed` domain. The check
+        result is visible through `GET /domains/{domain_id}`.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/DomainId'
+      responses:
+        '200':
+          description: Check performed.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks:
+    post:
+      tags: [Webhooks]
+      operationId: createWebhook
+      summary: Create a webhook
+      description: |
+        Registers an endpoint for the given event types and returns its signing secret.
+        The endpoint must be an `https` URL without credentials whose host resolves only to
+        public addresses (checked again before every delivery); redirects are not followed.
+        A team can have at most 20 webhooks.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateWebhookRequest'
+            example:
+              endpoint: https://hooks.acme.com/agdir-email
+              events: [email.delivered, email.bounced, email.complained]
+      responses:
+        '200':
+          description: Webhook created.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecret'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    get:
+      tags: [Webhooks]
+      operationId: listWebhooks
+      summary: List webhooks
+      description: |
+        Lists the team's webhooks, newest first.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: A page of webhooks.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}:
+    get:
+      tags: [Webhooks]
+      operationId: getWebhook
+      summary: Retrieve a webhook
+      description: |
+        Returns a webhook including its current signing secret.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+      responses:
+        '200':
+          description: The webhook.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Webhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    patch:
+      tags: [Webhooks]
+      operationId: updateWebhook
+      summary: Update a webhook
+      description: |
+        Changes the endpoint, the subscribed events and/or the status. Fields left out are
+        unchanged. Re-enabling a webhook that was disabled (by you, or automatically after
+        three days of failed deliveries) clears its failure streak.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateWebhookRequest'
+            example:
+              status: disabled
+      responses:
+        '200':
+          description: Webhook updated.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookRef'
+        '400':
+          $ref: '#/components/responses/InvalidJson'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Webhooks]
+      operationId: deleteWebhook
+      summary: Delete a webhook
+      description: |
+        Deletes the webhook and its delivery log.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+      responses:
+        '200':
+          description: Webhook deleted.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletedWebhook'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}/signing-secret/rotate:
+    post:
+      tags: [Webhooks]
+      operationId: rotateWebhookSigningSecret
+      summary: Rotate the signing secret
+      description: |
+        Generates a new signing secret. The old secret stops working immediately; deliveries
+        from now on (including retries of earlier events) are signed with the new one.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+      responses:
+        '200':
+          description: The new secret.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookSecret'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}/events:
+    get:
+      tags: [Webhook deliveries]
+      operationId: listWebhookDeliveries
+      summary: List deliveries
+      description: |
+        Lists the webhook's deliveries (webhook events), newest first. A delivery is created
+        for every email event the webhook is subscribed to while it is enabled.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: A page of deliveries.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}/events/{event_id}:
+    get:
+      tags: [Webhook deliveries]
+      operationId: getWebhookDelivery
+      summary: Retrieve a delivery
+      description: |
+        Returns one delivery with the exact payload that is (or was) POSTed to the endpoint
+        and the time of the next scheduled attempt.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: The delivery.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDelivery'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}/events/{event_id}/attempts:
+    get:
+      tags: [Webhook deliveries]
+      operationId: listWebhookDeliveryAttempts
+      summary: List delivery attempts
+      description: |
+        Lists the HTTP attempts of one delivery, newest first.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+        - $ref: '#/components/parameters/EventId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/After'
+      responses:
+        '200':
+          description: A page of attempts.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookAttemptList'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '422':
+          $ref: '#/components/responses/ValidationError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /webhooks/{webhook_id}/events/{event_id}/replay:
+    post:
+      tags: [Webhook deliveries]
+      operationId: replayWebhookDelivery
+      summary: Replay a delivery
+      description: |
+        Queues one immediate, manual attempt of the delivery with the identical payload and
+        `webhook-id` (signed with the current secret). It is not retried if it fails. Works
+        for disabled webhooks too.
+
+        Permission: `full_access`.
+      x-required-permission: full_access
+      parameters:
+        - $ref: '#/components/parameters/WebhookId'
+        - $ref: '#/components/parameters/EventId'
+      responses:
+        '200':
+          description: Attempt queued.
+          headers:
+            ratelimit-limit:
+              $ref: '#/components/headers/RateLimitLimit'
+            ratelimit-remaining:
+              $ref: '#/components/headers/RateLimitRemaining'
+            ratelimit-reset:
+              $ref: '#/components/headers/RateLimitReset'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/WebhookDeliveryRef'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/InvalidApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+webhooks:
+  emailEvent:
+    post:
+      tags: [Webhooks]
+      operationId: receiveEmailEvent
+      summary: Email event (sent to your endpoint)
+      description: |
+        Agdir Email POSTs one JSON event per request to each enabled webhook subscribed to its
+        `type`. Respond with any `2xx` status within 10 seconds; anything else (or a timeout)
+        is retried after 5 s, 5 min, 30 min, 2 h, 5 h and 10 h. Deliveries are at least once:
+        use `webhook-id` to deduplicate. A webhook that keeps failing for three days is
+        disabled and the team owners are notified.
+
+        **Verifying the signature** ([Standard Webhooks](https://www.standardwebhooks.com/)):
+
+        1. Take the secret `whsec_<base64>` and base64-decode the part after `whsec_` → key.
+        2. Compute `base64(HMAC-SHA256(key, "<webhook-id>.<webhook-timestamp>.<raw body>"))`.
+        3. `webhook-signature` is a space-separated list of `v1,<base64 signature>`; accept the
+           request if any `v1` entry equals your signature (constant-time comparison).
+        4. Reject the request if `webhook-timestamp` is more than 5 minutes away from now.
+
+        Always verify against the raw request body, before parsing it.
+      security: []
+      parameters:
+        - name: webhook-id
+          in: header
+          required: true
+          description: Unique id of this delivery; the same on retries and replays.
+          schema:
+            type: string
+            format: uuid
+        - name: webhook-timestamp
+          in: header
+          required: true
+          description: Unix time (seconds) when this attempt was signed.
+          schema:
+            type: string
+            pattern: '^[0-9]+$'
+            examples: ['1793350800']
+        - name: webhook-signature
+          in: header
+          required: true
+          description: Space-separated `v1,<base64 HMAC-SHA256>` signatures.
+          schema:
+            type: string
+            examples: ['v1,K5oZfzN95Z9UVu1EsfQmfVNQhnkZ2pj9o9NDN/H/pI4=']
+        - name: user-agent
+          in: header
+          description: Always `agdir.email-webhooks/1.0`.
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EmailEvent'
+            examples:
+              delivered:
+                summary: email.delivered
+                value:
+                  type: email.delivered
+                  created_at: '2026-10-30T10:00:05.000Z'
+                  data:
+                    created_at: '2026-10-30T10:00:00.000Z'
+                    email_id: 4ef9a417-02e9-4d39-ad75-9611e0fcc33c
+                    message_id: 0100019a3f0e7c2b-5e1f3c1a-2b4d-4c6e-8f0a-1b2c3d4e5f60-000000
+                    from: Acme <hello@acme.com>
+                    to: [user@example.org]
+                    subject: Welcome to Acme
+                    tags:
+                      category: welcome
+              bounced:
+                summary: email.bounced
+                value:
+                  type: email.bounced
+                  created_at: '2026-10-30T10:00:05.000Z'
+                  data:
+                    created_at: '2026-10-30T10:00:00.000Z'
+                    email_id: 4ef9a417-02e9-4d39-ad75-9611e0fcc33c
+                    from: Acme <hello@acme.com>
+                    to: [nobody@example.org]
+                    subject: Welcome to Acme
+                    tags: {}
+                    bounce:
+                      message: 550 5.1.1 user unknown
+                      subType: General
+                      type: Permanent
+      responses:
+        '200':
+          description: Any `2xx` status acknowledges the event.
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: re_…
+      description: |
+        API key from https://app.agdir.email, sent as `Authorization: Bearer re_…`.
+        `full_access` keys can call every operation; `sending_access` keys only
+        `sendEmail` and `sendBatch`.
+
+  headers:
+    RateLimitLimit:
+      description: Requests allowed per window (per team).
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+        examples: ['10']
+    RateLimitRemaining:
+      description: Requests left in the current window.
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+        examples: ['9']
+    RateLimitReset:
+      description: Seconds until the current window resets.
+      required: true
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+        examples: ['1']
+    OptionalRateLimitLimit:
+      description: Requests allowed per window (per team). Present once the API key has been authenticated.
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+    OptionalRateLimitRemaining:
+      description: Requests left in the current window. Present once the API key has been authenticated.
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+    OptionalRateLimitReset:
+      description: Seconds until the current window resets. Present once the API key has been authenticated.
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+    RetryAfter:
+      description: Seconds to wait before retrying. Sent with `rate_limit_exceeded` only.
+      schema:
+        type: string
+        pattern: '^[0-9]+$'
+        examples: ['1']
+
+  parameters:
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: |
+        Makes the request safe to retry: for 24 hours a repeated key with the same body
+        returns the original response without sending again. Reusing a key with a different
+        body answers `409 invalid_idempotent_request`.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 256
+        examples: [order-1234-receipt]
+    BatchValidation:
+      name: x-batch-validation
+      in: header
+      required: false
+      description: |
+        `strict` (default): any invalid email rejects the whole batch.
+        `permissive`: valid emails are accepted, invalid ones are reported in `errors`.
+      schema:
+        type: string
+        enum: [strict, permissive]
+        default: strict
+    Limit:
+      name: limit
+      in: query
+      required: false
+      description: Page size (1–100). Defaults to 20.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    After:
+      name: after
+      in: query
+      required: false
+      description: Return items after this id (the `id` of the last item of the previous page).
+      schema:
+        type: string
+        format: uuid
+    EmailId:
+      name: email_id
+      in: path
+      required: true
+      description: Email id returned when the email was sent.
+      schema:
+        type: string
+        format: uuid
+    DomainId:
+      name: domain_id
+      in: path
+      required: true
+      description: Domain id.
+      schema:
+        type: string
+        format: uuid
+    WebhookId:
+      name: webhook_id
+      in: path
+      required: true
+      description: Webhook id.
+      schema:
+        type: string
+        format: uuid
+    EventId:
+      name: event_id
+      in: path
+      required: true
+      description: Delivery (webhook event) id — also the `webhook-id` header of its requests.
+      schema:
+        type: string
+        format: uuid
+
+  responses:
+    InvalidJson:
+      description: The body is not valid JSON (`validation_error`).
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/OptionalRateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/OptionalRateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/OptionalRateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 400
+            name: validation_error
+            message: Invalid JSON body
+    Unauthorized:
+      description: |
+        `missing_api_key` (no bearer token) or `restricted_api_key` (a `sending_access` key
+        used for an operation that needs `full_access`).
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/OptionalRateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/OptionalRateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/OptionalRateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            missing:
+              value:
+                statusCode: 401
+                name: missing_api_key
+                message: Missing API key in the authorization header.
+            restricted:
+              value:
+                statusCode: 401
+                name: restricted_api_key
+                message: This API key is restricted to only send emails.
+    InvalidApiKey:
+      description: The API key is unknown or revoked (`invalid_api_key`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 403
+            name: invalid_api_key
+            message: API key is invalid.
+    SendForbidden:
+      description: |
+        `invalid_api_key`, or `validation_error` for an account-state refusal: the sender
+        domain is not verified for this team, the key is limited to another domain, or sending
+        is paused/suspended for the team.
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/OptionalRateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/OptionalRateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/OptionalRateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidKey:
+              value:
+                statusCode: 403
+                name: invalid_api_key
+                message: API key is invalid.
+            unverifiedDomain:
+              value:
+                statusCode: 403
+                name: validation_error
+                message: The acme.com domain is not verified. Please, add and verify your domain.
+            paused:
+              value:
+                statusCode: 403
+                name: validation_error
+                message: Sending is paused for this team. Check the dashboard or contact support@agdir.email.
+    DomainForbidden:
+      description: '`invalid_api_key`, or `validation_error` when the plan''s domain limit is reached.'
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/OptionalRateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/OptionalRateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/OptionalRateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            invalidKey:
+              value:
+                statusCode: 403
+                name: invalid_api_key
+                message: API key is invalid.
+            domainLimit:
+              value:
+                statusCode: 403
+                name: validation_error
+                message: You have reached the domains included in your plan (1). Upgrade your plan to add more domains.
+    NotFound:
+      description: No such resource in this team (`not_found`).
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/RateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 404
+            name: not_found
+            message: Email not found
+    IdempotencyConflict:
+      description: '`invalid_idempotent_request` or `concurrent_idempotent_requests`.'
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/RateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            mismatch:
+              value:
+                statusCode: 409
+                name: invalid_idempotent_request
+                message: Same idempotency key used with a different request payload.
+            concurrent:
+              value:
+                statusCode: 409
+                name: concurrent_idempotent_requests
+                message: Same idempotency key used while original request is still in progress.
+    ValidationError:
+      description: The request is invalid (`validation_error`). `message` names the offending field.
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/RateLimitReset'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 422
+            name: validation_error
+            message: 'to: Invalid email address'
+    RateLimited:
+      description: Too many requests per second (`rate_limit_exceeded`). Retry after `retry-after` seconds.
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/RateLimitReset'
+        retry-after:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 429
+            name: rate_limit_exceeded
+            message: Too many requests. Please limit the number of requests per second.
+    SendTooManyRequests:
+      description: |
+        `rate_limit_exceeded` (retry after `retry-after` seconds), or a quota refusal that must
+        not be retried: `daily_quota_exceeded` (until the next UTC day) or
+        `monthly_quota_exceeded` (monthly allowance or spend limit reached).
+      headers:
+        ratelimit-limit:
+          $ref: '#/components/headers/RateLimitLimit'
+        ratelimit-remaining:
+          $ref: '#/components/headers/RateLimitRemaining'
+        ratelimit-reset:
+          $ref: '#/components/headers/RateLimitReset'
+        retry-after:
+          $ref: '#/components/headers/RetryAfter'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          examples:
+            rateLimit:
+              value:
+                statusCode: 429
+                name: rate_limit_exceeded
+                message: Too many requests. Please limit the number of requests per second.
+            daily:
+              value:
+                statusCode: 429
+                name: daily_quota_exceeded
+                message: You have exceeded your daily email sending quota.
+            monthly:
+              value:
+                statusCode: 429
+                name: monthly_quota_exceeded
+                message: You have exceeded your monthly email sending quota.
+    InternalError:
+      description: Unexpected server error (`internal_server_error`).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+          example:
+            statusCode: 500
+            name: internal_server_error
+            message: An unexpected error occurred.
+
+  schemas:
+    Error:
+      type: object
+      description: Every error response has this body.
+      required: [statusCode, name, message]
+      additionalProperties: false
+      properties:
+        statusCode:
+          type: integer
+          description: The HTTP status code, repeated.
+          examples: [422]
+        name:
+          $ref: '#/components/schemas/ErrorName'
+        message:
+          type: string
+          description: Human-readable explanation.
+          examples: ['to: Invalid email address']
+    ErrorName:
+      type: string
+      description: Machine-readable error code.
+      enum:
+        - missing_api_key
+        - invalid_api_key
+        - restricted_api_key
+        - validation_error
+        - not_found
+        - invalid_idempotent_request
+        - concurrent_idempotent_requests
+        - daily_quota_exceeded
+        - monthly_quota_exceeded
+        - rate_limit_exceeded
+        - internal_server_error
+
+    # ── Emails ─────────────────────────────────────────────────────────────
+    EmailAddress:
+      type: string
+      description: '`user@example.com` or `Display Name <user@example.com>`.'
+      examples: ['Acme <hello@acme.com>']
+    EmailAddressList:
+      description: One address or a non-empty array of addresses.
+      oneOf:
+        - $ref: '#/components/schemas/EmailAddress'
+        - type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/EmailAddress'
+    Tag:
+      type: object
+      description: Custom metadata echoed in webhook events.
+      required: [name, value]
+      properties:
+        name:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,256}$'
+          description: ASCII letters, digits, `_` and `-` (max 256).
+          examples: [category]
+        value:
+          type: string
+          pattern: '^[A-Za-z0-9_-]{1,256}$'
+          description: ASCII letters, digits, `_` and `-` (max 256).
+          examples: [welcome]
+    SendEmailRequest:
+      type: object
+      description: An email. Either `html` or `text` (or both) is required.
+      required: [from, to, subject]
+      anyOf:
+        - required: [html]
+        - required: [text]
+      properties:
+        from:
+          $ref: '#/components/schemas/EmailAddress'
+        to:
+          $ref: '#/components/schemas/EmailAddressList'
+        subject:
+          type: string
+          minLength: 1
+          examples: [Welcome to Acme]
+        html:
+          type: string
+          description: HTML body.
+        text:
+          type: string
+          description: Plain-text body.
+        cc:
+          $ref: '#/components/schemas/EmailAddressList'
+        bcc:
+          $ref: '#/components/schemas/EmailAddressList'
+        reply_to:
+          $ref: '#/components/schemas/EmailAddressList'
+        headers:
+          type: object
+          description: Extra email headers.
+          additionalProperties:
+            type: string
+          examples:
+            - X-Entity-Ref-ID: '123'
+        tags:
+          type: array
+          items:
+            $ref: '#/components/schemas/Tag'
+        scheduled_at:
+          type: string
+          format: date-time
+          description: |
+            Send later: an ISO 8601 timestamp with a UTC offset, in the future and at most
+            72 hours ahead. The email's status is `scheduled` until then; it can be canceled.
+          examples: ['2026-11-01T09:00:00+01:00']
+    SendEmailResponse:
+      type: object
+      required: [id]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          examples: [4ef9a417-02e9-4d39-ad75-9611e0fcc33c]
+    SendBatchRequest:
+      type: array
+      minItems: 1
+      maxItems: 100
+      items:
+        $ref: '#/components/schemas/SendEmailRequest'
+    SendBatchResponse:
+      type: object
+      required: [data]
+      additionalProperties: false
+      properties:
+        data:
+          type: array
+          description: Ids of the accepted emails, in request order (invalid items skipped).
+          items:
+            $ref: '#/components/schemas/SendEmailResponse'
+        errors:
+          type: array
+          description: 'Only with `x-batch-validation: permissive` — the rejected items.'
+          items:
+            $ref: '#/components/schemas/BatchError'
+    BatchError:
+      type: object
+      required: [index, message]
+      additionalProperties: false
+      properties:
+        index:
+          type: integer
+          minimum: 0
+          description: Position of the rejected email in the request array.
+        message:
+          type: string
+          examples: ['to: Invalid email address']
+    EmailStatus:
+      type: string
+      description: |
+        Latest status of an email. It only moves forward: `queued` → `sent` → `delivered` →
+        `opened`/`clicked`; or `scheduled` → `canceled`; or `bounced`, `complained`,
+        `failed`, `delivery_delayed`.
+      enum:
+        - queued
+        - scheduled
+        - sent
+        - delivery_delayed
+        - delivered
+        - opened
+        - clicked
+        - bounced
+        - failed
+        - complained
+        - canceled
+    Email:
+      type: object
+      required: [object, id, from, to, cc, bcc, reply_to, subject, html, text, created_at, scheduled_at, last_event]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: email
+        id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          examples: ['Acme <hello@acme.com>']
+        to:
+          type: array
+          items:
+            type: string
+          examples: [[user@example.org]]
+        cc:
+          type: [array, 'null']
+          items:
+            type: string
+        bcc:
+          type: [array, 'null']
+          items:
+            type: string
+        reply_to:
+          type: [array, 'null']
+          items:
+            type: string
+        subject:
+          type: string
+        html:
+          type: [string, 'null']
+        text:
+          type: [string, 'null']
+        created_at:
+          type: string
+          format: date-time
+        scheduled_at:
+          type: [string, 'null']
+          format: date-time
+        last_event:
+          $ref: '#/components/schemas/EmailStatus'
+    EmailRef:
+      type: object
+      required: [object, id]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: email
+        id:
+          type: string
+          format: uuid
+
+    # ── Domains ────────────────────────────────────────────────────────────
+    DomainStatus:
+      type: string
+      description: |
+        `pending` while DNS is being checked (every 5 min for the first hour, then hourly),
+        `verified` once DKIM verifies, `failed` after 72 hours without success,
+        `temporary_failure` when a verified domain's DKIM stops resolving.
+      enum: [not_started, pending, verified, failed, temporary_failure]
+    DomainRecord:
+      type: object
+      required: [record, name, type, ttl, status, value]
+      additionalProperties: false
+      properties:
+        record:
+          type: string
+          enum: [DKIM, SPF, DMARC]
+          description: What the record is for.
+        name:
+          type: string
+          description: Host name relative to the registrable domain.
+          examples: [agdir._domainkey]
+        type:
+          type: string
+          enum: [TXT, MX, CNAME]
+        ttl:
+          type: string
+          examples: [Auto]
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        value:
+          type: string
+          examples: ['v=spf1 include:amazonses.com ~all']
+        priority:
+          type: integer
+          description: MX priority (MX records only).
+          examples: [10]
+    DomainCapabilities:
+      type: object
+      required: [sending, receiving]
+      additionalProperties: false
+      properties:
+        sending:
+          type: string
+          enum: [enabled, disabled]
+        receiving:
+          type: string
+          enum: [enabled, disabled]
+    DomainSummary:
+      type: object
+      required: [id, name, status, created_at, region, capabilities, open_tracking, click_tracking]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          examples: [acme.com]
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        created_at:
+          type: string
+          format: date-time
+        region:
+          type: string
+          description: Sending region.
+          examples: [eu-north-1]
+        capabilities:
+          $ref: '#/components/schemas/DomainCapabilities'
+        open_tracking:
+          type: boolean
+        click_tracking:
+          type: boolean
+    CreatedDomain:
+      description: The new domain with the DNS records to publish.
+      type: object
+      required: [id, name, status, created_at, region, capabilities, open_tracking, click_tracking, records]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          examples: [acme.com]
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        created_at:
+          type: string
+          format: date-time
+        region:
+          type: string
+          examples: [eu-north-1]
+        capabilities:
+          $ref: '#/components/schemas/DomainCapabilities'
+        open_tracking:
+          type: boolean
+        click_tracking:
+          type: boolean
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainRecord'
+    Domain:
+      type: object
+      required: [object, id, name, status, created_at, region, capabilities, open_tracking, click_tracking, records]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: domain
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+          examples: [acme.com]
+        status:
+          $ref: '#/components/schemas/DomainStatus'
+        created_at:
+          type: string
+          format: date-time
+        region:
+          type: string
+          examples: [eu-north-1]
+        capabilities:
+          $ref: '#/components/schemas/DomainCapabilities'
+        open_tracking:
+          type: boolean
+        click_tracking:
+          type: boolean
+        records:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainRecord'
+    DomainList:
+      type: object
+      required: [object, has_more, data]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DomainSummary'
+    CreateDomainRequest:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: Domain or subdomain you own.
+          examples: [acme.com]
+        region:
+          type: string
+          description: Sending region. Only `eu-north-1` is available.
+          enum: [eu-north-1]
+          default: eu-north-1
+    DomainRef:
+      type: object
+      required: [object, id]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: domain
+        id:
+          type: string
+          format: uuid
+    DeletedDomain:
+      type: object
+      required: [object, id, deleted]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: domain
+        id:
+          type: string
+          format: uuid
+        deleted:
+          type: boolean
+          const: true
+
+    # ── Webhooks ───────────────────────────────────────────────────────────
+    WebhookEventType:
+      type: string
+      description: |
+        * `email.scheduled` — accepted with `scheduled_at`.
+        * `email.sent` — handed to the mail transfer agent.
+        * `email.delivered` — accepted by the recipient's mail server.
+        * `email.delivery_delayed` — temporarily not deliverable; still retrying.
+        * `email.bounced` — permanently rejected by the recipient's server.
+        * `email.complained` — the recipient marked it as spam.
+        * `email.opened` / `email.clicked` — engagement (when tracking is enabled).
+        * `email.failed` — not sent (e.g. every recipient suppressed, domain deleted).
+      enum:
+        - email.sent
+        - email.scheduled
+        - email.delivered
+        - email.delivery_delayed
+        - email.complained
+        - email.bounced
+        - email.opened
+        - email.clicked
+        - email.failed
+    WebhookStatus:
+      type: string
+      enum: [enabled, disabled]
+    WebhookSummary:
+      type: object
+      required: [id, endpoint, created_at, status, events]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          format: uri
+          examples: ['https://hooks.acme.com/agdir-email']
+        created_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/WebhookStatus'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+    Webhook:
+      type: object
+      required: [object, id, endpoint, created_at, status, events, signing_secret]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook
+        id:
+          type: string
+          format: uuid
+        endpoint:
+          type: string
+          format: uri
+          examples: ['https://hooks.acme.com/agdir-email']
+        created_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/WebhookStatus'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        signing_secret:
+          $ref: '#/components/schemas/SigningSecret'
+    SigningSecret:
+      type: string
+      description: '`whsec_` followed by the base64 of 32 random bytes. Keep it secret.'
+      pattern: '^whsec_[A-Za-z0-9+/]+={0,2}$'
+      examples: [whsec_jKT2NUVPRi3ySWvAIWGPOgI7T5f5fo4GW+oqMMNmAIs=]
+    WebhookList:
+      type: object
+      required: [object, has_more, data]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookSummary'
+    CreateWebhookRequest:
+      type: object
+      required: [endpoint, events]
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: Public `https` URL.
+          examples: ['https://hooks.acme.com/agdir-email']
+        events:
+          type: array
+          minItems: 1
+          description: Event types to deliver (duplicates are ignored).
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+    UpdateWebhookRequest:
+      type: object
+      properties:
+        endpoint:
+          type: string
+          format: uri
+          description: Public `https` URL.
+        events:
+          type: array
+          minItems: 1
+          items:
+            $ref: '#/components/schemas/WebhookEventType'
+        status:
+          $ref: '#/components/schemas/WebhookStatus'
+    WebhookSecret:
+      type: object
+      required: [object, id, signing_secret]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook
+        id:
+          type: string
+          format: uuid
+        signing_secret:
+          $ref: '#/components/schemas/SigningSecret'
+    WebhookRef:
+      type: object
+      required: [object, id]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook
+        id:
+          type: string
+          format: uuid
+    DeletedWebhook:
+      type: object
+      required: [object, id, deleted]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook
+        id:
+          type: string
+          format: uuid
+        deleted:
+          type: boolean
+          const: true
+
+    # ── Webhook deliveries ─────────────────────────────────────────────────
+    WebhookDeliveryStatus:
+      type: string
+      description: |
+        `pending` (first attempt queued), `attempting` (failed at least once, retry
+        scheduled), `success` (an attempt got a 2xx), `failed` (all retries used up).
+      enum: [pending, attempting, success, failed]
+    WebhookDeliverySummary:
+      type: object
+      required: [id, type, created_at, status]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Also the `webhook-id` header of every attempt.
+        type:
+          $ref: '#/components/schemas/WebhookEventType'
+        created_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/WebhookDeliveryStatus'
+    WebhookDelivery:
+      type: object
+      required: [object, id, type, created_at, status, next_attempt_at, payload]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook_event
+        id:
+          type: string
+          format: uuid
+        type:
+          $ref: '#/components/schemas/WebhookEventType'
+        created_at:
+          type: string
+          format: date-time
+        status:
+          $ref: '#/components/schemas/WebhookDeliveryStatus'
+        next_attempt_at:
+          type: [string, 'null']
+          format: date-time
+          description: When the next automatic attempt is due; `null` when none is scheduled.
+        payload:
+          $ref: '#/components/schemas/EmailEvent'
+    WebhookDeliveryList:
+      type: object
+      required: [object, has_more, data]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookDeliverySummary'
+    WebhookAttempt:
+      type: object
+      required: [id, http_status_code, response, sent_at]
+      additionalProperties: false
+      properties:
+        id:
+          type: string
+          format: uuid
+        http_status_code:
+          type: integer
+          description: Status returned by your endpoint; `0` when no response was received.
+          examples: [200]
+        response:
+          type: string
+          description: Start of the response body, or the connection error.
+        sent_at:
+          type: string
+          format: date-time
+    WebhookAttemptList:
+      type: object
+      required: [object, has_more, data]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: list
+        has_more:
+          type: boolean
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/WebhookAttempt'
+    WebhookDeliveryRef:
+      type: object
+      required: [object, id]
+      additionalProperties: false
+      properties:
+        object:
+          type: string
+          const: webhook_event
+        id:
+          type: string
+          format: uuid
+
+    # ── Webhook payload ────────────────────────────────────────────────────
+    EmailEvent:
+      type: object
+      description: The JSON body POSTed to webhook endpoints.
+      required: [type, created_at, data]
+      additionalProperties: false
+      properties:
+        type:
+          $ref: '#/components/schemas/WebhookEventType'
+        created_at:
+          type: string
+          format: date-time
+          description: When the event happened.
+        data:
+          $ref: '#/components/schemas/EmailEventData'
+    EmailEventData:
+      type: object
+      required: [created_at, email_id, from, to, subject, tags]
+      additionalProperties: false
+      properties:
+        created_at:
+          type: string
+          format: date-time
+          description: When the email was accepted.
+        email_id:
+          type: string
+          format: uuid
+        message_id:
+          type: string
+          description: Message id assigned by the mail transfer agent, once the email has been sent.
+        from:
+          type: string
+        to:
+          type: array
+          items:
+            type: string
+        subject:
+          type: string
+        tags:
+          type: object
+          description: The email's tags as a `name → value` map.
+          additionalProperties:
+            type: string
+        bounce:
+          $ref: '#/components/schemas/Bounce'
+        click:
+          $ref: '#/components/schemas/Click'
+        failed:
+          $ref: '#/components/schemas/Failure'
+    Bounce:
+      type: object
+      description: Present on `email.bounced`.
+      required: [message, subType, type]
+      additionalProperties: false
+      properties:
+        message:
+          type: string
+          description: Diagnostic from the recipient's server.
+        subType:
+          type: string
+          examples: [General]
+        type:
+          type: string
+          examples: [Permanent]
+    Click:
+      type: object
+      description: Present on `email.clicked`.
+      required: [ipAddress, link, timestamp, userAgent]
+      additionalProperties: false
+      properties:
+        ipAddress:
+          type: string
+        link:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        userAgent:
+          type: string
+    Failure:
+      type: object
+      description: Present on `email.failed`.
+      required: [reason]
+      additionalProperties: false
+      properties:
+        reason:
+          type: string
+          examples: [suppressed]
