@@ -1,0 +1,74 @@
+name: PHP split (Packagist mirror)
+
+# Packagist needs composer.json at a repository root, so a tag `php/vX.Y.Z` mirrors php/ to the
+# read-only repository AgdirAS/agdirlabs-email-php and tags it `vX.Y.Z` there. Packagist reads the mirror.
+# One-time setup (repository + deploy key secret PHP_SPLIT_DEPLOY_KEY + Packagist): see php/README.md "Releasing".
+
+on:
+  push:
+    tags: ['php/v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Existing monorepo tag to mirror, e.g. php/v0.1.0'
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: php-split
+  cancel-in-progress: false
+
+env:
+  MIRROR: git@github.com:AgdirAS/agdirlabs-email-php.git
+
+jobs:
+  split:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Resolve tag
+        id: tag
+        env:
+          INPUT_TAG: ${{ inputs.tag }}
+        run: |
+          set -euo pipefail
+          source_tag="${INPUT_TAG:-$GITHUB_REF_NAME}"
+          version="${source_tag#php/}"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Tag '$source_tag' is not php/vX.Y.Z"; exit 1
+          fi
+          echo "source=$source_tag" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/checkout@v4
+        with:
+          ref: refs/tags/${{ steps.tag.outputs.source }}
+          fetch-depth: 0
+
+      - name: Check the version constant matches the tag
+        env:
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          grep -q "public const VERSION = '${VERSION#v}';" php/src/AgdirEmail.php \
+            || { echo "::error::php/src/AgdirEmail.php VERSION does not match $VERSION"; exit 1; }
+
+      - name: Split php/ into its own history
+        run: git subtree split --prefix=php -b php-split
+
+      - name: Push to the mirror
+        env:
+          DEPLOY_KEY: ${{ secrets.PHP_SPLIT_DEPLOY_KEY }}
+          VERSION: ${{ steps.tag.outputs.version }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then echo "::error::Secret PHP_SPLIT_DEPLOY_KEY is not set (see php/README.md)"; exit 1; fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$DEPLOY_KEY" > ~/.ssh/php_split && chmod 600 ~/.ssh/php_split
+          ssh-keyscan -t ed25519 github.com >> ~/.ssh/known_hosts 2>/dev/null
+          export GIT_SSH_COMMAND="ssh -i ~/.ssh/php_split -o IdentitiesOnly=yes"
+          git tag -f "$VERSION" php-split
+          # The split is deterministic, so this is a fast-forward unless the mirror was edited by hand.
+          git push "$MIRROR" php-split:refs/heads/main
+          git push "$MIRROR" "refs/tags/$VERSION"
