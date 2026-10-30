@@ -1,0 +1,41 @@
+name: Release
+
+# Push a tag `<package dir>@<version>`, e.g. `email@0.2.0`.
+# Publishes via npm Trusted Publishing (OIDC): no npm token is stored anywhere. Each package must
+# list this repo + workflow (release.yml) as its trusted publisher on npmjs.com; provenance is automatic.
+on:
+  push:
+    tags: ['*@*']
+
+permissions:
+  contents: read
+  id-token: write # OIDC token for npm Trusted Publishing
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+      - name: npm with Trusted Publishing support (≥ 11.5.1)
+        run: npm install -g npm@latest
+      - run: pnpm install --frozen-lockfile
+      - name: Resolve package from tag
+        id: pkg
+        run: |
+          dir="${GITHUB_REF_NAME%@*}"; version="${GITHUB_REF_NAME##*@}"
+          test -f "packages/$dir/package.json" || { echo "no package packages/$dir"; exit 1; }
+          actual=$(node -p "require('./packages/$dir/package.json').version")
+          test "$actual" = "$version" || { echo "tag $version != package.json $actual"; exit 1; }
+          echo "dir=packages/$dir" >> "$GITHUB_OUTPUT"
+      - run: pnpm --filter "./${{ steps.pkg.outputs.dir }}" typecheck
+      - run: pnpm --filter "./${{ steps.pkg.outputs.dir }}" test
+      - run: pnpm --filter "./${{ steps.pkg.outputs.dir }}" build
+      - name: Publish
+        working-directory: ${{ steps.pkg.outputs.dir }}
+        run: npm publish --access public

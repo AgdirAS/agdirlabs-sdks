@@ -1,0 +1,63 @@
+{
+  "name": "@agdirlabs/email",
+  "version": "0.1.0",
+  "description": "Official Node.js SDK for Agdir Email — programmatic SMTP for developers.",
+  "license": "MIT",
+  "author": "Agdir AS",
+  "homepage": "https://agdir.email",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AgdirAS/agdirlabs-npm.git",
+    "directory": "packages/email"
+  },
+  "keywords": [
+    "email",
+    "smtp",
+    "transactional-email",
+    "email-api",
+    "webhooks",
+    "agdir"
+  ],
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist",
+    "CHANGELOG.md"
+  ],
+  "sideEffects": false,
+  "engines": {
+    "node": ">=20.3"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "scripts": {
+    "build": "tsup src/index.ts --format esm,cjs --dts --clean --target es2022",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "pnpm build"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "tsup": "^8.5.0",
+    "typescript": "^5.9.0",
+    "vitest": "^4.0.0"
+  },
+  "bugs": {
+    "url": "https://github.com/AgdirAS/agdirlabs-npm/issues"
+  }
+}

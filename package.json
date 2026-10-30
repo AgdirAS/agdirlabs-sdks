@@ -1,0 +1,11 @@
+{
+  "name": "agdirlabs-npm",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.2.2",
+  "scripts": {
+    "build": "pnpm -r build",
+    "test": "pnpm -r test",
+    "typecheck": "pnpm -r typecheck"
+  }
+}
