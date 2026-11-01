@@ -4,6 +4,12 @@ All notable changes to this package are documented here. The format follows [Kee
 
 ## [Unreleased]
 
+## [0.1.2] — 2026-11-02
+
+### Changed
+
+- Repository moved to [AgdirAS/agdirlabs-sdks](https://github.com/AgdirAS/agdirlabs-sdks), the monorepo for all official Agdir SDKs.
+
 ## [0.1.1] — 2026-10-30
 
 ### Changed
