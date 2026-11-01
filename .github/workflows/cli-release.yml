@@ -57,5 +57,7 @@ jobs:
             cli/dist/*.tar.gz cli/dist/*.zip cli/dist/*.deb cli/dist/*.rpm cli/dist/*.apk cli/dist/checksums.txt
       - name: Publish Homebrew, Scoop and winget manifests
         env:
-          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
+          SCOOP_BUCKET_DEPLOY_KEY: ${{ secrets.SCOOP_BUCKET_DEPLOY_KEY }}
+          WINGET_GITHUB_TOKEN: ${{ secrets.WINGET_GITHUB_TOKEN }}
         run: cli/scripts/publish-manifests.sh "${{ steps.v.outputs.version }}"

@@ -91,7 +91,7 @@ homebrew_casks:
     repository:
       owner: AgdirAS
       name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"unused\" }}"  # never used: we run with --skip=publish (scripts/publish-manifests.sh pushes)
     directory: Casks
     homepage: https://agdir.email
     description: Command-line interface for Agdir Email, the EU-hosted transactional email API
@@ -121,7 +121,7 @@ scoops:
     repository:
       owner: AgdirAS
       name: scoop-bucket
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"unused\" }}"  # never used: we run with --skip=publish (scripts/publish-manifests.sh pushes)
     homepage: https://agdir.email
     description: Command-line interface for Agdir Email, the EU-hosted transactional email API
     license: MIT
@@ -158,7 +158,7 @@ winget:
       owner: AgdirAS
       name: winget-pkgs
       branch: "AgdirLabs.AgdirEmail-{{ .Version }}"
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"unused\" }}"  # never used: we run with --skip=publish (scripts/publish-manifests.sh pushes)
       pull_request:
         enabled: true
         base:

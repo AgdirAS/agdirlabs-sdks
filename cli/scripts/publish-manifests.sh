@@ -1,30 +1,38 @@
 #!/usr/bin/env bash
 # Publishes the package-manager manifests that `goreleaser release --skip=publish` wrote to cli/dist,
 # once the GitHub release cli/v<version> (and so every download URL in them) exists:
-#   - Homebrew cask  → AgdirAS/homebrew-tap   Casks/agdir-email.rb
-#   - Scoop manifest → AgdirAS/scoop-bucket   agdir-email.json
+#   - Homebrew cask  → AgdirAS/homebrew-tap   Casks/agdir-email.rb   (deploy key HOMEBREW_TAP_DEPLOY_KEY)
+#   - Scoop manifest → AgdirAS/scoop-bucket   agdir-email.json       (deploy key SCOOP_BUCKET_DEPLOY_KEY)
 #   - winget         → branch on the fork AgdirAS/winget-pkgs + pull request to microsoft/winget-pkgs
-# Needs TAP_GITHUB_TOKEN (see README → Releasing) and the GitHub CLI. Usage: publish-manifests.sh <version>
+#                      (needs WINGET_GITHUB_TOKEN, a token that can push to the fork and open the PR; skipped if unset)
+# Usage: publish-manifests.sh <version>
 set -euo pipefail
 
 version=${1:?usage: publish-manifests.sh <version>}
-: "${TAP_GITHUB_TOKEN:?TAP_GITHUB_TOKEN is not set}"
+: "${HOMEBREW_TAP_DEPLOY_KEY:?HOMEBREW_TAP_DEPLOY_KEY is not set}"
+: "${SCOOP_BUCKET_DEPLOY_KEY:?SCOOP_BUCKET_DEPLOY_KEY is not set}"
 dist=$(cd "$(dirname "$0")/../dist" && pwd)
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
-export GH_TOKEN=$TAP_GITHUB_TOKEN
+mkdir -p ~/.ssh && chmod 700 ~/.ssh
+ssh-keyscan -t ed25519 github.com >>~/.ssh/known_hosts 2>/dev/null
 
-clone() { # <owner/repo> <dir> [git clone args…]
-	local repo=$1 dir=$2
-	shift 2
-	git clone --quiet "$@" "https://x-access-token:${TAP_GITHUB_TOKEN}@github.com/${repo}.git" "$dir"
-	git -C "$dir" config user.name "Agdir Labs"
-	git -C "$dir" config user.email "support@agdir.email"
+configure() { # <dir>
+	git -C "$1" config user.name "Agdir Labs"
+	git -C "$1" config user.email "support@agdir.email"
 }
 
-publish_file() { # <owner/repo> <source file> <path in repo>
-	local repo=$1 src=$2 dst=$3 dir="$work/${1#*/}"
-	clone "$repo" "$dir" --depth 1
+clone_with_key() { # <owner/repo> <dir> <private key>
+	local repo=$1 dir=$2 keyfile="$work/key-${1#*/}"
+	printf '%s\n' "$3" >"$keyfile" && chmod 600 "$keyfile"
+	GIT_SSH_COMMAND="ssh -i $keyfile -o IdentitiesOnly=yes" git clone --quiet --depth 1 "git@github.com:${repo}.git" "$dir"
+	git -C "$dir" config core.sshCommand "ssh -i $keyfile -o IdentitiesOnly=yes"
+	configure "$dir"
+}
+
+publish_file() { # <owner/repo> <deploy key> <source file> <path in repo>
+	local repo=$1 key=$2 src=$3 dst=$4 dir="$work/${1#*/}"
+	clone_with_key "$repo" "$dir" "$key"
 	mkdir -p "$dir/$(dirname "$dst")"
 	cp "$src" "$dir/$dst"
 	git -C "$dir" add "$dst"
@@ -37,15 +45,23 @@ publish_file() { # <owner/repo> <source file> <path in repo>
 	echo "$repo: published $dst"
 }
 
-publish_file AgdirAS/homebrew-tap "$dist/homebrew/Casks/agdir-email.rb" Casks/agdir-email.rb
-publish_file AgdirAS/scoop-bucket "$dist/scoop/agdir-email.json" agdir-email.json
+publish_file AgdirAS/homebrew-tap "$HOMEBREW_TAP_DEPLOY_KEY" "$dist/homebrew/Casks/agdir-email.rb" Casks/agdir-email.rb
+publish_file AgdirAS/scoop-bucket "$SCOOP_BUCKET_DEPLOY_KEY" "$dist/scoop/agdir-email.json" agdir-email.json
+
+if [ -z "${WINGET_GITHUB_TOKEN:-}" ]; then
+	echo "::notice::WINGET_GITHUB_TOKEN is not set: skipping the winget pull request (see cli/README.md → Releasing)"
+	exit 0
+fi
+export GH_TOKEN=$WINGET_GITHUB_TOKEN
 
 # winget: manifests go to a branch of our fork, then a pull request upstream.
 pkg=manifests/a/AgdirLabs/AgdirEmail
 branch="AgdirLabs.AgdirEmail-$version"
 gh repo sync AgdirAS/winget-pkgs --branch master
 dir="$work/winget-pkgs"
-clone AgdirAS/winget-pkgs "$dir" --depth 1 --filter=blob:none --sparse --branch master
+git clone --quiet --depth 1 --filter=blob:none --sparse --branch master \
+	"https://x-access-token:${WINGET_GITHUB_TOKEN}@github.com/AgdirAS/winget-pkgs.git" "$dir"
+configure "$dir"
 git -C "$dir" sparse-checkout set "$pkg"
 kind="New version"
 [ -d "$dir/$pkg" ] || kind="New package"
