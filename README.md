@@ -9,15 +9,15 @@ Official SDKs and tools for [Agdir Email](https://agdir.email) — programmatic 
 | Language | Package | Folder | Status |
 | --- | --- | --- | --- |
 | Node.js / TypeScript | [`@agdirlabs/email`](https://www.npmjs.com/package/@agdirlabs/email) | [`packages/email`](packages/email) | [![npm](https://img.shields.io/npm/v/@agdirlabs/email.svg)](https://www.npmjs.com/package/@agdirlabs/email) |
-| Node.js — Nodemailer | `@agdirlabs/nodemailer-transport` | [`packages/nodemailer-transport`](packages/nodemailer-transport) | in development |
-| Python | `agdirlabs-email` (PyPI) | [`python`](python) | in development |
-| PHP / Laravel | `agdirlabs/email` (Packagist) | [`php`](php) | in development |
-| Go | `github.com/AgdirAS/agdirlabs-sdks/go` | [`go`](go) | in development |
-| .NET | `AgdirLabs.Email` (NuGet) | [`dotnet`](dotnet) | in development |
-| Java / Kotlin | `com.agdirlabs:agdir-email` (Maven Central) | [`java`](java) | in development |
-| Ruby | `agdirlabs-email` (RubyGems) | [`ruby`](ruby) | in development |
-| Rust | `agdirlabs-email` (crates.io) | [`rust`](rust) | in development |
-| CLI | `agdir-email` (Homebrew, Scoop, winget, deb/rpm, `go install`) | [`cli`](cli) | in development |
+| Node.js — Nodemailer | `@agdirlabs/nodemailer-transport` | [`packages/nodemailer-transport`](packages/nodemailer-transport) | coming soon |
+| Python | [`agdirlabs-email`](https://pypi.org/project/agdirlabs-email/) (PyPI) | [`python`](python) | [![PyPI](https://img.shields.io/pypi/v/agdirlabs-email.svg)](https://pypi.org/project/agdirlabs-email/) |
+| PHP / Laravel | [`agdirlabs/email`](https://packagist.org/packages/agdirlabs/email) (Packagist) | [`php`](php) | [![Packagist](https://img.shields.io/packagist/v/agdirlabs/email.svg)](https://packagist.org/packages/agdirlabs/email) |
+| Go | [`github.com/AgdirAS/agdirlabs-sdks/go`](https://pkg.go.dev/github.com/AgdirAS/agdirlabs-sdks/go) | [`go`](go) | [![Go Reference](https://pkg.go.dev/badge/github.com/AgdirAS/agdirlabs-sdks/go.svg)](https://pkg.go.dev/github.com/AgdirAS/agdirlabs-sdks/go) |
+| .NET | [`AgdirLabs.Email`](https://www.nuget.org/packages/AgdirLabs.Email) (NuGet) | [`dotnet`](dotnet) | [![NuGet](https://img.shields.io/nuget/v/AgdirLabs.Email.svg)](https://www.nuget.org/packages/AgdirLabs.Email) |
+| Java / Kotlin | `com.agdirlabs:agdir-email` (Maven Central) | [`java`](java) | coming soon |
+| Ruby | [`agdirlabs-email`](https://rubygems.org/gems/agdirlabs-email) (RubyGems) | [`ruby`](ruby) | [![Gem](https://img.shields.io/gem/v/agdirlabs-email.svg)](https://rubygems.org/gems/agdirlabs-email) |
+| Rust | `agdirlabs-email` (crates.io) | [`rust`](rust) | coming soon |
+| CLI | `agdir-email` (Homebrew, Scoop, winget, deb/rpm, `go install`) | [`cli`](cli) | coming soon |
 
 All SDKs implement the same API, described by the [OpenAPI spec](openapi/agdir-email.yaml), and share the same conventions: a client preconfigured for `https://api.agdir.email`, the `AGDIR_EMAIL_API_KEY` / `AGDIR_EMAIL_BASE_URL` environment variables, typed errors with the API's error codes, safe retries with idempotency keys, cursor pagination, and webhook signature verification.
 
