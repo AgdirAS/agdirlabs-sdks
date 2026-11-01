@@ -8,7 +8,7 @@ on:
     tags: ['ruby/v*']
 
 permissions:
-  contents: write # release-gem configures git credentials; the Rakefile disables its tag push
+  contents: read
   id-token: write # OIDC token for RubyGems Trusted Publishing
 
 jobs:
@@ -52,8 +52,9 @@ jobs:
           test -n "$key" || { echo "::error::Token exchange failed: $(printf '%s' "$res" | jq -c 'del(.rubygems_api_key)' 2>/dev/null || echo "$res")"; exit 1; }
           echo "::add-mask::$key"
           echo "api-key=$key" >> "$GITHUB_OUTPUT"
-      - uses: rubygems/release-gem@v1
-        with:
-          working-directory: ruby
-          token: ${{ steps.rubygems.outputs.api-key }}
-          setup-trusted-publisher: false
+      - name: Build and push the gem
+        env:
+          GEM_HOST_API_KEY: ${{ steps.rubygems.outputs.api-key }}
+        run: |
+          gem build agdirlabs-email.gemspec
+          gem push "agdirlabs-email-${GITHUB_REF_NAME#ruby/v}.gem"
