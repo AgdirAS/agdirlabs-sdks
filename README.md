@@ -9,7 +9,7 @@ Official SDKs and tools for [Agdir Email](https://agdir.email) — programmatic 
 | Language | Package | Folder | Status |
 | --- | --- | --- | --- |
 | Node.js / TypeScript | [`@agdirlabs/email`](https://www.npmjs.com/package/@agdirlabs/email) | [`packages/email`](packages/email) | [![npm](https://img.shields.io/npm/v/@agdirlabs/email.svg)](https://www.npmjs.com/package/@agdirlabs/email) |
-| Node.js — Nodemailer | `@agdirlabs/nodemailer-transport` | [`packages/nodemailer-transport`](packages/nodemailer-transport) | coming soon |
+| Node.js — Nodemailer | [`@agdirlabs/nodemailer-transport`](https://www.npmjs.com/package/@agdirlabs/nodemailer-transport) | [`packages/nodemailer-transport`](packages/nodemailer-transport) | [![npm](https://img.shields.io/npm/v/@agdirlabs/nodemailer-transport.svg)](https://www.npmjs.com/package/@agdirlabs/nodemailer-transport) |
 | Python | [`agdirlabs-email`](https://pypi.org/project/agdirlabs-email/) (PyPI) | [`python`](python) | [![PyPI](https://img.shields.io/pypi/v/agdirlabs-email.svg)](https://pypi.org/project/agdirlabs-email/) |
 | PHP / Laravel | [`agdirlabs/email`](https://packagist.org/packages/agdirlabs/email) (Packagist) | [`php`](php) | [![Packagist](https://img.shields.io/packagist/v/agdirlabs/email.svg)](https://packagist.org/packages/agdirlabs/email) |
 | Go | [`github.com/AgdirAS/agdirlabs-sdks/go`](https://pkg.go.dev/github.com/AgdirAS/agdirlabs-sdks/go) | [`go`](go) | [![Go Reference](https://pkg.go.dev/badge/github.com/AgdirAS/agdirlabs-sdks/go.svg)](https://pkg.go.dev/github.com/AgdirAS/agdirlabs-sdks/go) |
