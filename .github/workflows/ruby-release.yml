@@ -30,6 +30,30 @@ jobs:
           actual=$(ruby -r ./lib/agdirlabs/email/version -e 'print AgdirLabs::Email::VERSION')
           test "$actual" = "$version" || { echo "tag $version != VERSION $actual"; exit 1; }
       - run: bundle exec rake test
+      # Trusted Publishing, done by hand: rubygems.org only lets a *pending* publisher create a new gem when the
+      # exchange names the owning account (`owner`), which rubygems/release-gem can't pass. Once the gem exists,
+      # `owner` is omitted. Repo variable RUBYGEMS_OWNER_ID = the account ID from the Pending Trusted Publishers page.
+      - name: Exchange the GitHub OIDC token for a short-lived RubyGems API key
+        id: rubygems
+        env:
+          OWNER_ID: ${{ vars.RUBYGEMS_OWNER_ID }}
+        run: |
+          jwt=$(curl -sSf -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "$ACTIONS_ID_TOKEN_REQUEST_URL&audience=rubygems.org" | jq -r .value)
+          if [ "$(curl -s -o /dev/null -w '%{http_code}' https://rubygems.org/api/v1/gems/agdirlabs-email.json)" = 404 ]; then
+            test -n "$OWNER_ID" || { echo "::error::New gem: set repo variable RUBYGEMS_OWNER_ID"; exit 1; }
+            body=$(jq -n --arg jwt "$jwt" --arg owner "$OWNER_ID" '{jwt: $jwt, owner: $owner}')
+          else
+            body=$(jq -n --arg jwt "$jwt" '{jwt: $jwt}')
+          fi
+          res=$(curl -sS -X POST https://rubygems.org/api/v1/oidc/trusted_publisher/exchange_token \
+            -H 'content-type: application/json' -H 'accept: application/json' -d "$body")
+          key=$(printf '%s' "$res" | jq -r '.rubygems_api_key // empty')
+          test -n "$key" || { echo "::error::Token exchange failed: $(printf '%s' "$res" | jq -c 'del(.rubygems_api_key)' 2>/dev/null || echo "$res")"; exit 1; }
+          echo "::add-mask::$key"
+          echo "api-key=$key" >> "$GITHUB_OUTPUT"
       - uses: rubygems/release-gem@v1
         with:
           working-directory: ruby
+          token: ${{ steps.rubygems.outputs.api-key }}
+          setup-trusted-publisher: false
