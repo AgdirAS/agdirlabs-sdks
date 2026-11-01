@@ -16,8 +16,8 @@ Official SDKs and tools for [Agdir Email](https://agdir.email) — programmatic 
 | .NET | [`AgdirLabs.Email`](https://www.nuget.org/packages/AgdirLabs.Email) (NuGet) | [`dotnet`](dotnet) | [![NuGet](https://img.shields.io/nuget/v/AgdirLabs.Email.svg)](https://www.nuget.org/packages/AgdirLabs.Email) |
 | Java / Kotlin | `com.agdirlabs:agdir-email` (Maven Central) | [`java`](java) | coming soon |
 | Ruby | [`agdirlabs-email`](https://rubygems.org/gems/agdirlabs-email) (RubyGems) | [`ruby`](ruby) | [![Gem](https://img.shields.io/gem/v/agdirlabs-email.svg)](https://rubygems.org/gems/agdirlabs-email) |
-| Rust | `agdirlabs-email` (crates.io) | [`rust`](rust) | coming soon |
-| CLI | `agdir-email` (Homebrew, Scoop, winget, deb/rpm, `go install`) | [`cli`](cli) | coming soon |
+| Rust | [`agdirlabs-email`](https://crates.io/crates/agdirlabs-email) (crates.io) | [`rust`](rust) | [![crates.io](https://img.shields.io/crates/v/agdirlabs-email.svg)](https://crates.io/crates/agdirlabs-email) |
+| CLI | `agdir-email` — `brew install agdiras/tap/agdir-email`, Scoop, deb/rpm, [binaries](https://github.com/AgdirAS/agdirlabs-sdks/releases/tag/cli/v0.1.0) | [`cli`](cli) | 0.1.0 |
 
 All SDKs implement the same API, described by the [OpenAPI spec](openapi/agdir-email.yaml), and share the same conventions: a client preconfigured for `https://api.agdir.email`, the `AGDIR_EMAIL_API_KEY` / `AGDIR_EMAIL_BASE_URL` environment variables, typed errors with the API's error codes, safe retries with idempotency keys, cursor pagination, and webhook signature verification.
 
